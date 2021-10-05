@@ -82,71 +82,11 @@ func RequestSnippet(query string, SchedulerIP string, SchedulerPort string) {
 	}
 	// 입력확인
 	fmt.Println(string(json_snippet_byte))
-
-	startTime := time.Now()
-
-	result := make(chan Response, 1)
-	for i := 0; i < 1; i++ {
-		go SendHTTPMessage(SchedulerIP, SchedulerPort, json_snippet_byte, result)
-	}
-
-	resList := []Response{}
-
-	for i := 0; i < 1; i++ {
-		tmpres := <-result
-		resList = append(resList, tmpres)
-	}
-
-	res := MergeResult(resList)
-	printClient(res)
-
-	endTime := time.Since(startTime).Seconds()
-	fmt.Printf("%0.1f sec\n", endTime)
-
-	// tableSchema := getTableSchema(parsedQuery.TableName)
-}
-func MergeResult(resList []Response) Response {
-	result := resList[0]
-	//datas := [][]string{}
-
-	for i, res := range resList {
-		if i == 0 {
-			continue
-		}
-
-		if res.Code == 200 {
-
-			for _, value := range res.Data.Values {
-				//data := []string{}
-				//for _, field := range res.Data.Field {
-				//data = append(data, string(value[field]))
-				result.Data.Values = append(result.Data.Values, value)
-				//}
-
-				//datas = append(datas, data)
-
-			}
-
-		} else {
-			log.Fatal(res.Message)
-		}
-	}
-
-	result.Code = resList[0].Code
-	result.Message = resList[0].Message
-
-	return result
-
-}
-func SendHTTPMessage(SchedulerIP string, SchedulerPort string, json_snippet_byte []byte, result chan Response) {
-
 	snippet_buff := bytes.NewBuffer(json_snippet_byte)
 
-	// buf := &bytes.Buffer{}
-	// deepcopy.Copy(buf, &snippet_buff)
+	startTime := time.Now()
 	req, err := http.NewRequest("GET", "http://"+SchedulerIP+":"+SchedulerPort, snippet_buff)
 
-	res := Response{}
 	if err != nil {
 		fmt.Println("httperr : ", err)
 	} else {
@@ -162,16 +102,22 @@ func SendHTTPMessage(SchedulerIP string, SchedulerPort string, json_snippet_byte
 			bytes, _ := ioutil.ReadAll(resp.Body)
 			jsonDataString := string(bytes)
 
-			res = resJsonParser(jsonDataString)
+			res := resJsonParser(jsonDataString)
 			res_byte, _ := json.MarshalIndent(res, "", "  ")
 
 			fmt.Println("\n[ Result ]")
 			fmt.Println(string(res_byte))
 
+			printClient(res)
+
 		}
 	}
-	result <- res
+	endTime := time.Since(startTime).Seconds()
+	fmt.Printf("%0.1f sec\n", endTime)
+
+	// tableSchema := getTableSchema(parsedQuery.TableName)
 }
+
 func Parse(query string) (ParsedQuery, error) {
 	//query.replace(" ", ' ')
 	//log.Println(query)
