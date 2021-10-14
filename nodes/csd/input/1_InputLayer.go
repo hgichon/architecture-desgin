@@ -14,8 +14,8 @@ func Input(w http.ResponseWriter, r *http.Request) {
 	//data := []byte("-> Response From Server [10.0.6.132]")
 	//w.Write(data)
 
-	//body, _ := ioutil.ReadAll(r.Body)
-	//bodyString := string(body)
+	body, _ := ioutil.ReadAll(r.Body)
+	bodyString := string(body)
 
 	bodyString := getSnippet()
 	log.Println()
@@ -25,8 +25,13 @@ func Input(w http.ResponseWriter, r *http.Request) {
 	log.Println("Complete to Input Snippet")
 	log.Println("Send Data to Scan Layer")
 
+	err := checkSnippet(body)
+	if !err {
+		log.Println(err)
+	}
 	input_buff := bytes.NewBuffer(body)
 
+	
 	req, err := http.NewRequest("POST", "http://:3001", input_buff)
 
 	if err != nil {
@@ -47,13 +52,12 @@ func Input(w http.ResponseWriter, r *http.Request) {
 	}
 
 }
-
-func getSnippet(w http.ResponseWriter, r *http.Request) {
-
-	body, _ := ioutil.ReadAll(r.Body)
-	bodyString := string(body)
-
-	return bodyString
+func checkSnippet() bool{
+	a := false
+	if bodyString == select {
+		a = true
+	}
+	return a
 }
 
 func main() {
