@@ -34,7 +34,8 @@ func Output(w http.ResponseWriter, r *http.Request) {
 	}
 
 	recieveData := &FilterData{}
-	err = json.Unmarshal(body, recieveData)
+	jsonunMarsharling := recieveData
+	err = json.Unmarshal(body, jsonunMarsharling)
 	if err != nil {
 		//klog.Errorln(err)
 		fmt.Println(err)
@@ -58,8 +59,7 @@ func Output(w http.ResponseWriter, r *http.Request) {
 	content, err := json.Marshal(tmp)
 
 	if err != nil {
-		//abort(w, 500)
-		rw.WriteHeader(statusCode)
+		abort(w, 500)
 	} else {
 		w.WriteHeader(tmp.Code)
 		w.Write(content)
@@ -67,9 +67,9 @@ func Output(w http.ResponseWriter, r *http.Request) {
 
 }
 
-// func abort(rw http.ResponseWriter, statusCode int) {
-// 	rw.WriteHeader(statusCode)
-// }
+func abort(rw http.ResponseWriter, statusCode int) {
+	rw.WriteHeader(statusCode)
+}
 
 func makeResponse(resp *types.QueryResponse, resultData map[string][]string) ResponseA {
 	fmt.Println(time.Now().Format(time.StampMilli), "Prepare Output Response...")
