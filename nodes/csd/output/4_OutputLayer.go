@@ -13,12 +13,14 @@ import (
 type FilterData struct {
 	Result   types.QueryResponse `json:"result"`
 	TempData map[string][]string `json:"tempData"`
+	Datacheck bool `json:"datacheck"`
 }
 
 type ResponseA struct {
 	Code    int         `json:"code"`
 	Message string      `json:"message"`
 	Data    interface{} `json:"data"`
+	Datacheck bool `json:"datacheck"`
 }
 
 //결과 받아서 host서버에 전달
