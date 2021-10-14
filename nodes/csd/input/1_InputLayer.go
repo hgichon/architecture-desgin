@@ -14,9 +14,10 @@ func Input(w http.ResponseWriter, r *http.Request) {
 	//data := []byte("-> Response From Server [10.0.6.132]")
 	//w.Write(data)
 
-	body, _ := ioutil.ReadAll(r.Body)
-	bodyString := string(body)
+	//body, _ := ioutil.ReadAll(r.Body)
+	//bodyString := string(body)
 
+	bodyString := getSnippet()
 	log.Println()
 	log.Println("Snippet >", bodyString)
 	log.Println("Input Snippet ...")
@@ -45,6 +46,14 @@ func Input(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+}
+
+func getSnippet(w http.ResponseWriter, r *http.Request) {
+
+	body, _ := ioutil.ReadAll(r.Body)
+	bodyString := string(body)
+
+	return bodyString
 }
 
 func main() {
