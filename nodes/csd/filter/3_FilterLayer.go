@@ -149,6 +149,12 @@ func wherevalidator(where types.Where, schema types.TableSchema, currentMap map[
 				} else {
 					continue
 				}
+			case ">":
+				if lv > rv {
+					resultIndex = append(resultIndex, i)
+				} else {
+					continue
+				}
 			}
 		}
 	} else if schema.ColumnTypes[columnIndex] == "date" {
