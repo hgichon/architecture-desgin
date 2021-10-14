@@ -39,6 +39,7 @@ func Filtering(w http.ResponseWriter, r *http.Request) {
 	data := recieveData.Snippet
 	tableData := recieveData.Tabledata
 
+	log.Println(tableData) //check where clause
 	var tempData map[string][]string
 	tempData = map[string][]string{}
 
