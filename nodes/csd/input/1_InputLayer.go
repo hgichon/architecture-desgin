@@ -27,7 +27,7 @@ func Input(w http.ResponseWriter, r *http.Request) {
 
 	input_buff := bytes.NewBuffer(body)
 
-	req, err := http.NewRequest("POST", "http://:8186", input_buff)
+	req, err := http.NewRequest("POST", "http://:3001", input_buff)
 
 	if err != nil {
 		fmt.Println("httperr : ", err)
@@ -65,7 +65,7 @@ func main() {
 	log.Println("Input State [ Running ]...")
 
 	// 2999는 기존 server
-	http.ListenAndServe(":8185", handler)
+	http.ListenAndServe(":3000", handler)
 	// 3000번은 simulator
 	// http.ListenAndServe(":3000", handler)
 }
