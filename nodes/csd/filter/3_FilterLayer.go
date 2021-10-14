@@ -55,6 +55,17 @@ func Filtering(w http.ResponseWriter, r *http.Request) {
 				switch prevOerator {
 				case "AND":
 					tempData = wherevalidator(where, data.TableSchema, tempData)
+				case "OR":
+					tempData2 := wherevalidator(where, data.TableSchema, tableData)
+					union := make(map[string][]string)
+					for header, data := range tempData2 {
+						union[header] = make([]string, 0)
+						union[header] = append(union[header], data...)
+						union[header] = append(union[header], tempData[header]...)
+						union[header] = makeSliceUnique(union[header])
+					}
+					tempData = union
+				}
 				prevOerator = data.Parsedquery.WhereClauses[i].Operator
 			}
 		}
