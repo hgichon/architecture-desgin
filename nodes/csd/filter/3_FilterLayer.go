@@ -95,7 +95,8 @@ func Filtering(w http.ResponseWriter, r *http.Request) {
 	outputJson, err := json.Marshal(outputBody)
 	outputJson_buff := bytes.NewBuffer(outputJson)
 
-	req, err := http.NewRequest("POST", "http://:3003", outputJson_buff)
+	outputJson_real_buff := outputJson_buff
+	req, err := http.NewRequest("POST", "http://:3003", outputJson_real_buff)
 
 	if err != nil {
 		log.Println("httperr : ", err)
