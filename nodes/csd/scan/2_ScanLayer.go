@@ -42,7 +42,7 @@ func Scan(w http.ResponseWriter, r *http.Request) {
 	log.Println("Check Snippet : ", data) //Snippet Validate Check
 	resp := &types.QueryResponse{
 		Table:  data.Parsedquery.TableName,
-		Field:  makeColumnToString(data.Parsedquery.Columns, data.TableSchema),
+		Field:  CSVParser(data.Parsedquery.Columns, data.TableSchema),
 		Values: make([]map[string]string, 0),
 	}
 	log.Println("Table Name >", resp.Table)
@@ -100,7 +100,7 @@ func Scan(w http.ResponseWriter, r *http.Request) {
 
 }
 
-func makeColumnToString(reqColumn []types.Select, schema types.TableSchema) []string {
+func CSVParser(reqColumn []types.Select, schema types.TableSchema) []string {
 	result := make([]string, 0)
 	for _, sel := range reqColumn {
 		if sel.ColumnType == 1 {
