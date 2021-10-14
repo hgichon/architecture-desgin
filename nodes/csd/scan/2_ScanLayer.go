@@ -25,18 +25,7 @@ type ScanData struct {
 //데이터 파일 읽어옴
 func Scan(w http.ResponseWriter, r *http.Request) {
 
-	body, err := ioutil.ReadAll(r.Body)
-	if err != nil {
-		//klog.Errorln(err)
-		log.Println(err)
-	}
-	recieveData := &types.Snippet{}
-	err = json.Unmarshal(body, recieveData)
-	if err != nil {
-		//klog.Errorln(err)
-		log.Println(err)
-	}
-
+	recieveData := Readcsv()
 	data := recieveData
 
 	resp := &types.QueryResponse{
@@ -111,6 +100,21 @@ func makeColumnToString(reqColumn []types.Select, schema types.TableSchema) []st
 		}
 	}
 	return result
+}
+
+func Readcsv() string{
+	body, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		//klog.Errorln(err)
+		log.Println(err)
+	}
+	recieveData := &types.Snippet{}
+	err = json.Unmarshal(body, recieveData)
+	if err != nil {
+		//klog.Errorln(err)
+		log.Println(err)
+	}
+	return body
 }
 
 func rowToTableData(rows [][]string, schema types.TableSchema) map[string][]string {
