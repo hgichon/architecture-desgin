@@ -45,10 +45,10 @@ func Scan(w http.ResponseWriter, r *http.Request) {
 		Field:  makeColumnToString(data.Parsedquery.Columns, data.TableSchema),
 		Values: make([]map[string]string, 0),
 	}
-	//log.Println("Table Name >", resp.Table)
-	//log.Println("Block Offset >", data.BlockOffset)
-	//log.Println("Real Path >", rootDirectory+data.Parsedquery.TableName+".csv")
-	//log.Println("Scanning...")
+	log.Println("Table Name >", resp.Table)
+	log.Println("Block Offset >", data.BlockOffset)
+	log.Println("Real Path >", rootDirectory+data.Parsedquery.TableName+".csv")
+	log.Println("Scanning...")
 	// fmt.Println(time.Now().Format(time.StampMilli), "Table Name >", resp.Table)
 	// fmt.Println(time.Now().Format(time.StampMilli), "Block Offset >", data.BlockOffset)
 	// fmt.Println(time.Now().Format(time.StampMilli), "Real Path >", rootDirectory+data.Parsedquery.TableName+".csv")
