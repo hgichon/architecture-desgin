@@ -59,10 +59,10 @@ func Scan(w http.ResponseWriter, r *http.Request) {
 		log.Println(err)
 	}
 	// csv reader 생성
-	rdr := csv.NewReader(bufio.NewReader(tableCSV))
+	CSVdata := csv.NewReader(bufio.NewReader(tableCSV))
 
 	// csv 내용 모두 읽기
-	rows, _ := rdr.ReadAll()
+	rows, _ := CSVdata.ReadAll()
 	log.Println("Compleate Read", len(rows), "Data")
 	// fmt.Println(time.Now().Format(time.StampMilli), "Compleate Read", len(rows), "Data")
 	tableData := rowToTableData(rows, data.TableSchema)
