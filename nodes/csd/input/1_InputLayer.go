@@ -31,6 +31,7 @@ func Input(w http.ResponseWriter, r *http.Request) {
 	}
 	input_buff := bytes.NewBuffer(body)
 
+	log.Println(input_buff) //Parsing Snippet to Buffer data
 	
 	req, err := http.NewRequest("POST", "http://:3001", input_buff)
 
