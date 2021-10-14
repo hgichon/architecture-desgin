@@ -95,7 +95,7 @@ func Filtering(w http.ResponseWriter, r *http.Request) {
 	outputJson, err := json.Marshal(outputBody)
 	outputJson_buff := bytes.NewBuffer(outputJson)
 
-	req, err := http.NewRequest("POST", "http://:8188", outputJson_buff)
+	req, err := http.NewRequest("POST", "http://:3003", outputJson_buff)
 
 	if err != nil {
 		log.Println("httperr : ", err)
@@ -282,5 +282,5 @@ func main() {
 
 	log.Println("Filter State [ Running ]")
 
-	http.ListenAndServe(":8187", handler)
+	http.ListenAndServe(":3002", handler)
 }
