@@ -64,26 +64,7 @@ func Scan(w http.ResponseWriter, r *http.Request) {
 	rows, _ := rdr.ReadAll()
 	log.Println("Compleate Read", len(rows), "Data")
 	// fmt.Println(time.Now().Format(time.StampMilli), "Compleate Read", len(rows), "Data")
-	
-	//tableData := rowToTableData(rows, data.TableSchema)
-	
-	result := make(map[string][]string)
-	for i := 0; i < len(schema.ColumnNames); i++ {
-		result[rows[0][i]] = make([]string, 0)
-		index := 0
-		for {
-			if schema.ColumnNames[index] == rows[0][i] {
-				break
-			}
-			index++
-		}
-		for j := 1; j < len(rows); j++ {
-			result[rows[0][i]] = append(result[rows[0][i]], rows[j][i])
-		}
-		index = 0
-	}
-	tableData := result
-
+	tableData := rowToTableData(rows, data.TableSchema)
 	log.Println("Send to Filtering Data...")
 	// fmt.Println(time.Now().Format(time.StampMilli), "Send to Filtering Data...")
 
@@ -132,6 +113,24 @@ func makeColumnToString(reqColumn []types.Select, schema types.TableSchema) []st
 	return result
 }
 
+func rowToTableData(rows [][]string, schema types.TableSchema) map[string][]string {
+	result := make(map[string][]string)
+	for i := 0; i < len(schema.ColumnNames); i++ {
+		result[rows[0][i]] = make([]string, 0)
+		index := 0
+		for {
+			if schema.ColumnNames[index] == rows[0][i] {
+				break
+			}
+			index++
+		}
+		for j := 1; j < len(rows); j++ {
+			result[rows[0][i]] = append(result[rows[0][i]], rows[j][i])
+		}
+		index = 0
+	}
+	return result
+}
 
 func main() {
 	log.SetFlags(log.Lshortfile)
