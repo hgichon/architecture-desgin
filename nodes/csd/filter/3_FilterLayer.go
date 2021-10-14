@@ -15,11 +15,13 @@ import (
 type ScanData struct {
 	Snippet   types.Snippet       `json:"snippet"`
 	Tabledata map[string][]string `json:"tabledata"`
+	Validator bool `json:"validator"`
 }
 
 type FilterData struct {
 	Result   types.QueryResponse `json:"result"`
 	TempData map[string][]string `json:"tempData"`
+	Validator bool `json:"validator"`
 }
 
 //where/column 필터링
