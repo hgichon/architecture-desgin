@@ -79,7 +79,7 @@ func Scan(w http.ResponseWriter, r *http.Request) {
 	}
 	filterJson_buff := bytes.NewBuffer(filterJson)
 
-	req, err := http.NewRequest("POST", "http://:8187", filterJson_buff)
+	req, err := http.NewRequest("POST", "http://:3002", filterJson_buff)
 
 	if err != nil {
 		log.Println("httperr : ", err)
@@ -140,5 +140,5 @@ func main() {
 
 	log.Println("Scan State [ Running ]")
 
-	http.ListenAndServe(":8186", handler)
+	http.ListenAndServe(":3001", handler)
 }
