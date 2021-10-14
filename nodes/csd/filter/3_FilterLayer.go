@@ -47,16 +47,16 @@ func Filtering(w http.ResponseWriter, r *http.Request) {
 		fmt.Println("Nothing to Filter")
 		tempData = tableData
 	} else {
-		tempData = checkWhere(data.Parsedquery.WhereClauses[0], data.TableSchema, tableData)
+		tempData = wherevalidator(data.Parsedquery.WhereClauses[0], data.TableSchema, tableData)
 		if data.Parsedquery.WhereClauses[0].Operator != "NULL" {
 			prevOerator := data.Parsedquery.WhereClauses[0].Operator
 			wheres := data.Parsedquery.WhereClauses[1:]
 			for i, where := range wheres {
 				switch prevOerator {
 				case "AND":
-					tempData = checkWhere(where, data.TableSchema, tempData)
+					tempData = wherevalidator(where, data.TableSchema, tempData)
 				case "OR":
-					tempData2 := checkWhere(where, data.TableSchema, tableData)
+					tempData2 := wherevalidator(where, data.TableSchema, tableData)
 					union := make(map[string][]string)
 					for header, data := range tempData2 {
 						union[header] = make([]string, 0)
@@ -115,7 +115,7 @@ func Filtering(w http.ResponseWriter, r *http.Request) {
 
 }
 
-func checkWhere(where types.Where, schema types.TableSchema, currentMap map[string][]string) map[string][]string {
+func wherevalidator(where types.Where, schema types.TableSchema, currentMap map[string][]string) map[string][]string {
 	resultIndex := make([]int, 0)
 	columnIndex := foundIndex(schema.ColumnNames, where.LeftValue)
 	if schema.ColumnTypes[columnIndex] == "int" {
