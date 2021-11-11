@@ -535,131 +535,149 @@ func do_select(res Response, select_str string) Response {
 	//log.Println("len: ", len(res.Data.Values))
 
 	var wg sync.WaitGroup
-	ch := make(chan map[string]string, len(res.Data.Values))
+	chGroupName := make(chan string, len(res.Data.Values))
+	chData := make(chan map[string]string, len(res.Data.Values))
 
 	for groupName, groupDatas := range res.Data.Values {
-		GDataMap := make(map[string]string)
+		go func(groupName string, groupDatas []map[string]string, chGroupName chan string, chData chan map[string]string) {
+			defer wg.Done()
+			wg.Add(1)
 
-		var wg2 sync.WaitGroup
-		ch2 := make(chan map[string]string, len(groupDatas))
-		for _, groupData := range groupDatas {
+			GDataMap := make(map[string]string)
 
-			go func(groupData map[string]string, ch2 chan map[string]string) {
-				defer wg2.Done()
-				wg2.Add(1)
-				//log.Println("Go Routine")
+			var wg2 sync.WaitGroup
+			ch2 := make(chan map[string]string, len(groupDatas))
+			for _, groupData := range groupDatas {
 
-				tmpGDataMap := make(map[string]string)
+				go func(groupData map[string]string, ch2 chan map[string]string) {
+					defer wg2.Done()
+					wg2.Add(1)
+					//log.Println("Go Routine")
 
-				parameters := make(map[string]interface{}, 8)
-				for k, v := range groupData {
-					//fmt.Println("v :", strings.ToLower(k), v)
+					tmpGDataMap := make(map[string]string)
 
-					if f, err := strconv.ParseFloat(v, 64); err == nil {
-						parameters[strings.ToLower(k)] = f
-					} else if f, err := strconv.Atoi(v); err == nil {
-						parameters[strings.ToLower(k)] = f
-					} else {
-						parameters[strings.ToLower(k)] = v
-					}
-				}
-				for _, selectword := range selected_res.Data.SelectWords {
-					if selectword.Operator == "" && selectword.Expression == "" {
+					parameters := make(map[string]interface{}, 8)
+					for k, v := range groupData {
+						//fmt.Println("v :", strings.ToLower(k), v)
 
-						tmpGDataMap[strings.ToUpper(selectword.AsColumn)] = groupData[strings.ToUpper(selectword.AsColumn)]
-
-					} else {
-						var result interface{}
-
-						//fmt.Println("[selectword.Expression]", selectword.Expression)
-						if selectword.Expression == "(*)" {
-							result = 1
+						if f, err := strconv.ParseFloat(v, 64); err == nil {
+							parameters[strings.ToLower(k)] = f
+						} else if f, err := strconv.Atoi(v); err == nil {
+							parameters[strings.ToLower(k)] = f
 						} else {
-							expression, err := govaluate.NewEvaluableExpression(selectword.Expression)
-							if err != nil {
-								//fmt.Println(err)
+							parameters[strings.ToLower(k)] = v
+						}
+					}
+					for _, selectword := range selected_res.Data.SelectWords {
+						if selectword.Operator == "" && selectword.Expression == "" {
+
+							tmpGDataMap[strings.ToUpper(selectword.AsColumn)] = groupData[strings.ToUpper(selectword.AsColumn)]
+
+						} else {
+							var result interface{}
+
+							//fmt.Println("[selectword.Expression]", selectword.Expression)
+							if selectword.Expression == "(*)" {
+								result = 1
+							} else {
+								expression, err := govaluate.NewEvaluableExpression(selectword.Expression)
+								if err != nil {
+									//fmt.Println(err)
+								}
+								result, err = expression.Evaluate(parameters)
+								if err != nil {
+									//fmt.Println(err)
+								}
+								//fmt.Println("result:", result)
 							}
-							result, err = expression.Evaluate(parameters)
-							if err != nil {
-								//fmt.Println(err)
-							}
-							//fmt.Println("result:", result)
+
+							res_str := fmt.Sprintf("%v", result)
+							//fmt.Println("res_str:", res_str)
+
+							tmpGDataMap[strings.ToUpper(selectword.AsColumn)] = res_str
+
+						}
+					}
+					ch2 <- tmpGDataMap
+				}(groupData, ch2)
+
+			}
+
+			wg2.Wait() // 모든 고루틴이 종료될 때까지 대기
+			//log.Println("Go Routine End")
+			for i := 0; i < len(groupDatas); i++ {
+				tmpGDataMap := <-ch2
+				//fmt.Println(tmpGDataMap)
+				for _, selectword := range selected_res.Data.SelectWords {
+					//fmt.Println("**", selectword.AsColumn, tmpGDataMap[strings.ToUpper(selectword.AsColumn)])
+					//fmt.Println("*** dataMap: ", dataMap)
+					if _, ok := GDataMap[strings.ToUpper(selectword.AsColumn)]; !ok {
+						GDataMap[strings.ToUpper(selectword.AsColumn)] = tmpGDataMap[strings.ToUpper(selectword.AsColumn)]
+						//fmt.Println("**** dataMap: ", dataMap)
+					} else {
+						if selectword.Operator == "" && selectword.Expression == "" {
+							continue
 						}
 
-						res_str := fmt.Sprintf("%v", result)
-						//fmt.Println("res_str:", res_str)
+						f1, err := strconv.ParseFloat(GDataMap[strings.ToUpper(selectword.AsColumn)], 64)
+						if err != nil {
+							log.Println("error:", err)
+						}
+						f2, err := strconv.ParseFloat(tmpGDataMap[strings.ToUpper(selectword.AsColumn)], 64)
+						if err != nil {
+							log.Println("error:", err)
+						}
 
-						tmpGDataMap[strings.ToUpper(selectword.AsColumn)] = res_str
-
+						total_res_str := ""
+						if selectword.Operator == "sum" {
+							f := f1 + f2
+							total_res_str = strconv.FormatFloat(f, 'f', 5, 64)
+						} else if selectword.Operator == "avg" {
+							f := f1 + f2
+							total_res_str = strconv.FormatFloat(f, 'f', 5, 64)
+						} else if selectword.Operator == "count" {
+							f := f1 + f2 // count 인경우 1이기때문에 더하기
+							total_res_str = strconv.FormatFloat(f, 'f', 5, 64)
+						}
+						GDataMap[strings.ToUpper(selectword.AsColumn)] = total_res_str
 					}
+
 				}
-				ch2 <- tmpGDataMap
-			}(groupData, ch2)
+			}
+			//fmt.Println("ee", dataMap)
 
-		}
-
-		wg2.Wait() // 모든 고루틴이 종료될 때까지 대기
-		//log.Println("Go Routine End")
-		for i := 0; i < len(groupDatas); i++ {
-			tmpGDataMap := <-ch2
-			//fmt.Println(tmpGDataMap)
 			for _, selectword := range selected_res.Data.SelectWords {
-				//fmt.Println("**", selectword.AsColumn, tmpGDataMap[strings.ToUpper(selectword.AsColumn)])
-				//fmt.Println("*** dataMap: ", dataMap)
-				if _, ok := GDataMap[strings.ToUpper(selectword.AsColumn)]; !ok {
-					GDataMap[strings.ToUpper(selectword.AsColumn)] = tmpGDataMap[strings.ToUpper(selectword.AsColumn)]
-					//fmt.Println("**** dataMap: ", dataMap)
-				} else {
-					if selectword.Operator == "" && selectword.Expression == "" {
-						continue
-					}
-
-					f1, err := strconv.ParseFloat(GDataMap[strings.ToUpper(selectword.AsColumn)], 64)
+				if selectword.Operator == "avg" {
+					tmp := GDataMap[strings.ToUpper(selectword.AsColumn)]
+					f1, err := strconv.ParseFloat(tmp, 64)
 					if err != nil {
-						fmt.Println("error")
+						log.Println("error:", err)
 					}
-					f2, err := strconv.ParseFloat(tmpGDataMap[strings.ToUpper(selectword.AsColumn)], 64)
-					if err != nil {
-						fmt.Println("error")
-					}
+					f := f1 / float64(len(groupDatas))
+					total_res_str := strconv.FormatFloat(f, 'f', 5, 64)
 
-					total_res_str := ""
-					if selectword.Operator == "sum" {
-						f := f1 + f2
-						total_res_str = strconv.FormatFloat(f, 'f', 5, 64)
-					} else if selectword.Operator == "avg" {
-						f := f1 + f2
-						total_res_str = strconv.FormatFloat(f, 'f', 5, 64)
-					} else if selectword.Operator == "count" {
-						f := f1 + f2 // count 인경우 1이기때문에 더하기
-						total_res_str = strconv.FormatFloat(f, 'f', 5, 64)
-					}
 					GDataMap[strings.ToUpper(selectword.AsColumn)] = total_res_str
+
 				}
 
 			}
-		}
-		//fmt.Println("ee", dataMap)
+			//fmt.Println("ee2")
 
-		for _, selectword := range selected_res.Data.SelectWords {
-			if selectword.Operator == "avg" {
-				tmp := GDataMap[strings.ToUpper(selectword.AsColumn)]
-				f1, err := strconv.ParseFloat(tmp, 64)
-				if err != nil {
-					//fmt.Println("error")
-				}
-				f := f1 / float64(len(groupDatas))
-				total_res_str := strconv.FormatFloat(f, 'f', 5, 64)
+			//selected_res.Data.Values[groupName] = append(selected_res.Data.Values[groupName], GDataMap)
+			chGroupName <- groupName
+			chData <- GDataMap
 
-				GDataMap[strings.ToUpper(selectword.AsColumn)] = total_res_str
+		}(groupName, groupDatas, chGroupName, chData)
 
-			}
-
-		}
-		//fmt.Println("ee2")
-
+	}
+	wg.Wait() // 모든 고루틴이 종료될 때까지 대기
+	for i := 0; i < len(res.Data.Values); i++ {
+		groupName := <-chGroupName
+		GDataMap := <-chData
 		selected_res.Data.Values[groupName] = append(selected_res.Data.Values[groupName], GDataMap)
 	}
+
+	fmt.Println(selected_res.Data.Values)
 
 	// for _, group := range res.Data.Values {
 	// 	for _, record := range group {
@@ -841,6 +859,7 @@ func main() {
 	// query := "SELECT sum(C_CUSTKEY) FROM customer WHERE C_NAME='a' and C_CUSTKEY='1' and C_CUSTKEY='2' and C_CUSTKEY='3'"
 	//query := "SELECT C_NAME, C_ADDRESS, C_PHONE, C_CUSTKEY FROM customer WHERE C_CUSTKEY=525"
 	// query := "SELECT C_CUSTKEY FROM customer"
-	query := "select l_returnflag, l_linestatus, sum(l_quantity) as sum_qty, sum(l_extendedprice) as sum_base_price, sum(l_extendedprice * (1 - l_discount)) as sum_disc_price, sum(l_extendedprice * (1 - l_discount) * (1 + l_tax)) as sum_charge, avg(l_quantity) as avg_qty, avg(l_extendedprice) as avg_price, avg(l_discount) as avg_disc, count(*) as count_order from lineitem where l_shipdate <= date '1998-12-01' - interval '108' day group by l_returnflag, l_linestatus order by l_returnflag, l_linestatus;"
+	//query := "select l_returnflag, l_linestatus, sum(l_quantity) as sum_qty, sum(l_extendedprice) as sum_base_price, sum(l_extendedprice * (1 - l_discount)) as sum_disc_price, sum(l_extendedprice * (1 - l_discount) * (1 + l_tax)) as sum_charge, avg(l_quantity) as avg_qty, avg(l_extendedprice) as avg_price, avg(l_discount) as avg_disc, count(*) as count_order from lineitem where l_shipdate <= date '1998-12-01' - interval '108' day group by l_returnflag, l_linestatus order by l_returnflag, l_linestatus;"
+	query := "select l_returnflag, l_linestatus, sum(l_quantity) as sum_qty, sum(l_extendedprice) as sum_base_price, sum(l_extendedprice * (1 - l_discount)) as sum_disc_price, sum(l_extendedprice * (1 - l_discount) * (1 + l_tax)) as sum_charge, avg(l_quantity) as avg_qty, avg(l_extendedprice) as avg_price, avg(l_discount) as avg_disc, count(*) as count_order from lineitem where l_shipdate <= date '1998-12-01' - interval '108' day order by l_returnflag, l_linestatus;"
 	RequestSnippet(query, SchedulerIP, SchedulerPort)
 }

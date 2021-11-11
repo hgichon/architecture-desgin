@@ -40,6 +40,7 @@ func Scan(w http.ResponseWriter, r *http.Request) {
 	data := recieveData
 	log.Println("recieveData", data)
 
+	log.Println("Check Snippet : ", data) //Snippet Validate Check
 	resp := &types.QueryResponse{
 		TableNames: data.TableNames,
 		// Field:      makeColumnToString(data.Parsedquery.Columns, data.TableSchema),
@@ -93,7 +94,7 @@ func Scan(w http.ResponseWriter, r *http.Request) {
 	}
 	filterJson_buff := bytes.NewBuffer(filterJson)
 
-	req, err := http.NewRequest("POST", "http://:8187", filterJson_buff)
+	req, err := http.NewRequest("POST", "http://:3002", filterJson_buff)
 
 	if err != nil {
 		log.Println("httperr : ", err)
@@ -113,7 +114,7 @@ func Scan(w http.ResponseWriter, r *http.Request) {
 
 }
 
-func makeColumnToString(reqColumn []types.Select, schema types.TableSchema) []string {
+func CSVParser(reqColumn []types.Select, schema types.TableSchema) []string {
 	result := make([]string, 0)
 	for _, sel := range reqColumn {
 		if sel.ColumnType == 1 {
@@ -154,5 +155,5 @@ func main() {
 
 	log.Println("Scan State [ Running ]")
 
-	http.ListenAndServe(":8186", handler)
+	http.ListenAndServe(":3001", handler)
 }

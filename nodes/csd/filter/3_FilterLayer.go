@@ -47,13 +47,16 @@ func Filtering(w http.ResponseWriter, r *http.Request) {
 	data := recieveData.Snippet
 	tableData := recieveData.Tabledata
 
+
 	var tempData map[string]types.TableValues
 	// tempData = map[string][]string{}
+
 
 	if len(data.WhereClauses) == 0 {
 		fmt.Println("Nothing to Filter")
 		tempData = tableData
 	} else {
+<<<<<<< HEAD
 		log.Println("checking where")
 		// log.Println(tableData["lineitem"].Values["L_SHIPDATE"][0])
 		tempData = checkWhere(data.WhereClauses[0], data.TableSchema, tableData, data.TableNames)
@@ -172,7 +175,8 @@ func Filtering(w http.ResponseWriter, r *http.Request) {
 	log.Println("endeeddd")
 	outputJson_buff := bytes.NewBuffer(outputJson)
 
-	req, err := http.NewRequest("POST", "http://:8188", outputJson_buff)
+	outputJson_real_buff := outputJson_buff
+	req, err := http.NewRequest("POST", "http://:3003", outputJson_real_buff)
 
 	if err != nil {
 		log.Println("httperr : ", err)
@@ -192,6 +196,7 @@ func Filtering(w http.ResponseWriter, r *http.Request) {
 
 }
 
+<<<<<<< HEAD
 func checkWhere(where types.Where, schema map[string]types.TableSchema, tableData map[string]types.TableValues, tableNames []string) map[string]types.TableValues {
 	log.Println("checkwhere func..")
 	// TODO: 수정 필요
@@ -202,6 +207,9 @@ func checkWhere(where types.Where, schema map[string]types.TableSchema, tableDat
 	}
 	// log.Println(tblSchema)
 	// log.Println(tblData)
+=======
+func wherevalidator(where types.Where, schema types.TableSchema, currentMap map[string][]string) map[string][]string {
+>>>>>>> bd950cde622f4094dc536d41186209ca20eadff0
 	resultIndex := make([]int, 0)
 	whereCmd := rvCheck(where)
 	log.Println(whereCmd)
@@ -257,7 +265,6 @@ func checkWhere(where types.Where, schema map[string]types.TableSchema, tableDat
 				} else {
 					continue
 				}
-
 			}
 		}
 	} else if tblSchema.ColumnTypes[columnIndex] == "date" {
@@ -559,5 +566,5 @@ func main() {
 
 	log.Println("Filter State [ Running ]")
 
-	http.ListenAndServe(":8187", handler)
+	http.ListenAndServe(":3002", handler)
 }
