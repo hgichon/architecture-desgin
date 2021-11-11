@@ -533,23 +533,19 @@ func do_select(res Response, select_str string) Response {
 	selected_res.Data.Field = asColumns
 
 	//log.Println("len: ", len(res.Data.Values))
-
-	var wg sync.WaitGroup
-	ch := make(chan map[string]string, len(res.Data.Values))
-
 	for groupName, groupDatas := range res.Data.Values {
-		GDataMap := make(map[string]string)
+		dataMap := make(map[string]string)
 
-		var wg2 sync.WaitGroup
-		ch2 := make(chan map[string]string, len(groupDatas))
+		var wg sync.WaitGroup
+		ch := make(chan map[string]string, len(groupDatas))
 		for _, groupData := range groupDatas {
 
-			go func(groupData map[string]string, ch2 chan map[string]string) {
-				defer wg2.Done()
-				wg2.Add(1)
+			go func(groupDatas []map[string]string, ch chan map[string]string) {
+				defer wg.Done()
+				wg.Add(1)
 				//log.Println("Go Routine")
 
-				tmpGDataMap := make(map[string]string)
+				tmpDataMap := make(map[string]string)
 
 				parameters := make(map[string]interface{}, 8)
 				for k, v := range groupData {
@@ -566,7 +562,7 @@ func do_select(res Response, select_str string) Response {
 				for _, selectword := range selected_res.Data.SelectWords {
 					if selectword.Operator == "" && selectword.Expression == "" {
 
-						tmpGDataMap[strings.ToUpper(selectword.AsColumn)] = groupData[strings.ToUpper(selectword.AsColumn)]
+						tmpDataMap[strings.ToUpper(selectword.AsColumn)] = groupData[strings.ToUpper(selectword.AsColumn)]
 
 					} else {
 						var result interface{}
@@ -589,36 +585,36 @@ func do_select(res Response, select_str string) Response {
 						res_str := fmt.Sprintf("%v", result)
 						//fmt.Println("res_str:", res_str)
 
-						tmpGDataMap[strings.ToUpper(selectword.AsColumn)] = res_str
+						tmpDataMap[strings.ToUpper(selectword.AsColumn)] = res_str
 
 					}
 				}
-				ch2 <- tmpGDataMap
-			}(groupData, ch2)
+				ch <- tmpDataMap
+			}(groupDatas, ch)
 
 		}
 
-		wg2.Wait() // 모든 고루틴이 종료될 때까지 대기
+		wg.Wait() // 모든 고루틴이 종료될 때까지 대기
 		//log.Println("Go Routine End")
 		for i := 0; i < len(groupDatas); i++ {
-			tmpGDataMap := <-ch2
-			//fmt.Println(tmpGDataMap)
+			tmpDataMap := <-ch
+			//fmt.Println(tmpDataMap)
 			for _, selectword := range selected_res.Data.SelectWords {
-				//fmt.Println("**", selectword.AsColumn, tmpGDataMap[strings.ToUpper(selectword.AsColumn)])
+				//fmt.Println("**", selectword.AsColumn, tmpDataMap[strings.ToUpper(selectword.AsColumn)])
 				//fmt.Println("*** dataMap: ", dataMap)
-				if _, ok := GDataMap[strings.ToUpper(selectword.AsColumn)]; !ok {
-					GDataMap[strings.ToUpper(selectword.AsColumn)] = tmpGDataMap[strings.ToUpper(selectword.AsColumn)]
+				if _, ok := dataMap[strings.ToUpper(selectword.AsColumn)]; !ok {
+					dataMap[strings.ToUpper(selectword.AsColumn)] = tmpDataMap[strings.ToUpper(selectword.AsColumn)]
 					//fmt.Println("**** dataMap: ", dataMap)
 				} else {
 					if selectword.Operator == "" && selectword.Expression == "" {
 						continue
 					}
 
-					f1, err := strconv.ParseFloat(GDataMap[strings.ToUpper(selectword.AsColumn)], 64)
+					f1, err := strconv.ParseFloat(dataMap[strings.ToUpper(selectword.AsColumn)], 64)
 					if err != nil {
 						fmt.Println("error")
 					}
-					f2, err := strconv.ParseFloat(tmpGDataMap[strings.ToUpper(selectword.AsColumn)], 64)
+					f2, err := strconv.ParseFloat(tmpDataMap[strings.ToUpper(selectword.AsColumn)], 64)
 					if err != nil {
 						fmt.Println("error")
 					}
@@ -634,7 +630,7 @@ func do_select(res Response, select_str string) Response {
 						f := f1 + f2 // count 인경우 1이기때문에 더하기
 						total_res_str = strconv.FormatFloat(f, 'f', 5, 64)
 					}
-					GDataMap[strings.ToUpper(selectword.AsColumn)] = total_res_str
+					dataMap[strings.ToUpper(selectword.AsColumn)] = total_res_str
 				}
 
 			}
@@ -643,7 +639,7 @@ func do_select(res Response, select_str string) Response {
 
 		for _, selectword := range selected_res.Data.SelectWords {
 			if selectword.Operator == "avg" {
-				tmp := GDataMap[strings.ToUpper(selectword.AsColumn)]
+				tmp := dataMap[strings.ToUpper(selectword.AsColumn)]
 				f1, err := strconv.ParseFloat(tmp, 64)
 				if err != nil {
 					//fmt.Println("error")
@@ -651,14 +647,14 @@ func do_select(res Response, select_str string) Response {
 				f := f1 / float64(len(groupDatas))
 				total_res_str := strconv.FormatFloat(f, 'f', 5, 64)
 
-				GDataMap[strings.ToUpper(selectword.AsColumn)] = total_res_str
+				dataMap[strings.ToUpper(selectword.AsColumn)] = total_res_str
 
 			}
 
 		}
 		//fmt.Println("ee2")
 
-		selected_res.Data.Values[groupName] = append(selected_res.Data.Values[groupName], GDataMap)
+		selected_res.Data.Values[groupName] = append(selected_res.Data.Values[groupName], dataMap)
 	}
 
 	// for _, group := range res.Data.Values {

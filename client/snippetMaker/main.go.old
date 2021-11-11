@@ -12,7 +12,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/Knetic/govaluate"
@@ -190,7 +189,7 @@ func RequestSnippet(query string, SchedulerIP string, SchedulerPort string) {
 			// 			"L_DISCOUNT": "0.04",
 			// 			"L_TAX": "0.02",
 			// 			"L_RETURNFLAG": "A",
-			// 			"L_LINESTATUS": "B",
+			// 			"L_LINESTATUS": "D",
 			// 			"L_SHIPDATE": "1996.3.13",
 			// 			"L_COMMITDATE": "1996.2.12",
 			// 			"L_RECEIPTDATE": "1996.3.22",
@@ -202,7 +201,7 @@ func RequestSnippet(query string, SchedulerIP string, SchedulerPort string) {
 			// 	  }
 			// 	}
 			//   }`
-			// fmt.Println("jsonDataString:", jsonDataString)
+			//fmt.Println("jsonDataString:", jsonDataString)
 			res := resJsonParser(jsonDataString)
 			if res.Code == 200 {
 				filltered_res := Fillter(res, select_str, group_by_str, having_str, order_by_str)
@@ -532,118 +531,86 @@ func do_select(res Response, select_str string) Response {
 
 	selected_res.Data.Field = asColumns
 
-	//log.Println("len: ", len(res.Data.Values))
-
-	var wg sync.WaitGroup
-	ch := make(chan map[string]string, len(res.Data.Values))
-
 	for groupName, groupDatas := range res.Data.Values {
-		GDataMap := make(map[string]string)
+		dataMap := make(map[string]string)
 
-		var wg2 sync.WaitGroup
-		ch2 := make(chan map[string]string, len(groupDatas))
 		for _, groupData := range groupDatas {
 
-			go func(groupData map[string]string, ch2 chan map[string]string) {
-				defer wg2.Done()
-				wg2.Add(1)
-				//log.Println("Go Routine")
+			parameters := make(map[string]interface{}, 8)
+			for k, v := range groupData {
+				//fmt.Println("v :", strings.ToLower(k), v)
 
-				tmpGDataMap := make(map[string]string)
-
-				parameters := make(map[string]interface{}, 8)
-				for k, v := range groupData {
-					//fmt.Println("v :", strings.ToLower(k), v)
-
-					if f, err := strconv.ParseFloat(v, 64); err == nil {
-						parameters[strings.ToLower(k)] = f
-					} else if f, err := strconv.Atoi(v); err == nil {
-						parameters[strings.ToLower(k)] = f
-					} else {
-						parameters[strings.ToLower(k)] = v
-					}
+				if f, err := strconv.ParseFloat(v, 64); err == nil {
+					parameters[strings.ToLower(k)] = f
+				} else if f, err := strconv.Atoi(v); err == nil {
+					parameters[strings.ToLower(k)] = f
+				} else {
+					parameters[strings.ToLower(k)] = v
 				}
-				for _, selectword := range selected_res.Data.SelectWords {
-					if selectword.Operator == "" && selectword.Expression == "" {
+			}
+			for _, selectword := range selected_res.Data.SelectWords {
+				if selectword.Operator == "" && selectword.Expression == "" {
+					if _, ok := dataMap[strings.ToUpper(selectword.AsColumn)]; !ok {
+						dataMap[strings.ToUpper(selectword.AsColumn)] = groupData[strings.ToUpper(selectword.AsColumn)]
+					}
 
-						tmpGDataMap[strings.ToUpper(selectword.AsColumn)] = groupData[strings.ToUpper(selectword.AsColumn)]
+				} else {
+					var result interface{}
 
+					//fmt.Println("[selectword.Expression]", selectword.Expression)
+					if selectword.Expression == "(*)" {
+						result = 1
 					} else {
-						var result interface{}
+						expression, err := govaluate.NewEvaluableExpression(selectword.Expression)
+						if err != nil {
+							//fmt.Println(err)
+						}
+						result, err = expression.Evaluate(parameters)
+						if err != nil {
+							//fmt.Println(err)
+						}
+						//fmt.Println("result:", result)
+					}
 
-						//fmt.Println("[selectword.Expression]", selectword.Expression)
-						if selectword.Expression == "(*)" {
-							result = 1
-						} else {
-							expression, err := govaluate.NewEvaluableExpression(selectword.Expression)
-							if err != nil {
-								//fmt.Println(err)
-							}
-							result, err = expression.Evaluate(parameters)
-							if err != nil {
-								//fmt.Println(err)
-							}
-							//fmt.Println("result:", result)
+					res_str := fmt.Sprintf("%v", result)
+					//fmt.Println("res_str:", res_str)
+
+					if _, ok := dataMap[strings.ToUpper(selectword.AsColumn)]; !ok {
+
+						dataMap[strings.ToUpper(selectword.AsColumn)] = res_str
+					} else {
+						tmp := dataMap[strings.ToUpper(selectword.AsColumn)]
+						f1, err := strconv.ParseFloat(tmp, 64)
+						if err != nil {
+							//fmt.Println("error")
+						}
+						f2, err := strconv.ParseFloat(res_str, 64)
+						if err != nil {
+							//fmt.Println("error")
 						}
 
-						res_str := fmt.Sprintf("%v", result)
-						//fmt.Println("res_str:", res_str)
-
-						tmpGDataMap[strings.ToUpper(selectword.AsColumn)] = res_str
+						total_res_str := ""
+						if selectword.Operator == "sum" {
+							f := f1 + f2
+							total_res_str = strconv.FormatFloat(f, 'f', 5, 64)
+						} else if selectword.Operator == "avg" {
+							f := f1 + f2
+							total_res_str = strconv.FormatFloat(f, 'f', 5, 64)
+						} else if selectword.Operator == "count" {
+							f := f1 + f2 // count 인경우 1이기때문에 더하기
+							total_res_str = strconv.FormatFloat(f, 'f', 5, 64)
+						}
+						dataMap[strings.ToUpper(selectword.AsColumn)] = total_res_str
 
 					}
+
 				}
-				ch2 <- tmpGDataMap
-			}(groupData, ch2)
-
-		}
-
-		wg2.Wait() // 모든 고루틴이 종료될 때까지 대기
-		//log.Println("Go Routine End")
-		for i := 0; i < len(groupDatas); i++ {
-			tmpGDataMap := <-ch2
-			//fmt.Println(tmpGDataMap)
-			for _, selectword := range selected_res.Data.SelectWords {
-				//fmt.Println("**", selectword.AsColumn, tmpGDataMap[strings.ToUpper(selectword.AsColumn)])
-				//fmt.Println("*** dataMap: ", dataMap)
-				if _, ok := GDataMap[strings.ToUpper(selectword.AsColumn)]; !ok {
-					GDataMap[strings.ToUpper(selectword.AsColumn)] = tmpGDataMap[strings.ToUpper(selectword.AsColumn)]
-					//fmt.Println("**** dataMap: ", dataMap)
-				} else {
-					if selectword.Operator == "" && selectword.Expression == "" {
-						continue
-					}
-
-					f1, err := strconv.ParseFloat(GDataMap[strings.ToUpper(selectword.AsColumn)], 64)
-					if err != nil {
-						fmt.Println("error")
-					}
-					f2, err := strconv.ParseFloat(tmpGDataMap[strings.ToUpper(selectword.AsColumn)], 64)
-					if err != nil {
-						fmt.Println("error")
-					}
-
-					total_res_str := ""
-					if selectword.Operator == "sum" {
-						f := f1 + f2
-						total_res_str = strconv.FormatFloat(f, 'f', 5, 64)
-					} else if selectword.Operator == "avg" {
-						f := f1 + f2
-						total_res_str = strconv.FormatFloat(f, 'f', 5, 64)
-					} else if selectword.Operator == "count" {
-						f := f1 + f2 // count 인경우 1이기때문에 더하기
-						total_res_str = strconv.FormatFloat(f, 'f', 5, 64)
-					}
-					GDataMap[strings.ToUpper(selectword.AsColumn)] = total_res_str
-				}
-
 			}
-		}
-		//fmt.Println("ee", dataMap)
 
+		}
 		for _, selectword := range selected_res.Data.SelectWords {
 			if selectword.Operator == "avg" {
-				tmp := GDataMap[strings.ToUpper(selectword.AsColumn)]
+				tmp := dataMap[strings.ToUpper(selectword.AsColumn)]
 				f1, err := strconv.ParseFloat(tmp, 64)
 				if err != nil {
 					//fmt.Println("error")
@@ -651,14 +618,13 @@ func do_select(res Response, select_str string) Response {
 				f := f1 / float64(len(groupDatas))
 				total_res_str := strconv.FormatFloat(f, 'f', 5, 64)
 
-				GDataMap[strings.ToUpper(selectword.AsColumn)] = total_res_str
+				dataMap[strings.ToUpper(selectword.AsColumn)] = total_res_str
 
 			}
 
 		}
-		//fmt.Println("ee2")
 
-		selected_res.Data.Values[groupName] = append(selected_res.Data.Values[groupName], GDataMap)
+		selected_res.Data.Values[groupName] = append(selected_res.Data.Values[groupName], dataMap)
 	}
 
 	// for _, group := range res.Data.Values {
@@ -704,8 +670,8 @@ func do_order_by(res Response, order_by_str string) Response {
 		} else {
 			colName = strings.ToUpper(atom)
 		}
-		// fmt.Println("order:", order)
-		// fmt.Println("colName:", colName)
+		fmt.Println("order:", order)
+		fmt.Println("colName:", colName)
 
 		if order == "ASC" {
 			sort.Slice(mapDatas, func(i, j int) bool { return mapDatas[i][colName] < mapDatas[j][colName] }) // 오름차순
@@ -748,9 +714,7 @@ func Fillter(res Response, select_str, group_by_str, having_str, order_by_str st
 
 	return res
 }
-func isIntegral(val float64) bool {
-	return val == float64(int(val))
-}
+
 func SplitAny(s string, seps string) []string {
 	splitter := func(r rune) bool {
 		return strings.ContainsRune(seps, r)

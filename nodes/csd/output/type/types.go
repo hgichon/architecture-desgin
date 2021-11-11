@@ -1,10 +1,15 @@
 package types
 
 type Snippet struct {
-	Parsedquery ParsedQuery `json:"parsedQuery"`
-	TableSchema TableSchema `json:"tableSchema"`
-	BlockOffset int         `json:"blockOffset"` // 파일위치
-	BufferAddress string    `json:"bufferAddress"`
+	// Parsedquery ParsedQuery `json:"parsedQuery"`
+	// TableSchema TableSchema `json:"tableSchema"`
+	// BlockOffset int         `json:"blockOffset"` // 파일위치
+	// BufferAddress string    `json:"bufferAddress"`
+	TableNames    []string               `json:"tableNames"`
+	TableSchema   map[string]TableSchema `json:"tableSchema"`
+	WhereClauses  []Where                `json:"whereClause"`
+	BlockOffset   int                    `json:"blockOffset"`
+	BufferAddress string                 `json:"buggerAddress"`
 }
 type ParsedQuery struct {
 	TableName    string   `json:"tableName"`
@@ -30,8 +35,21 @@ type TableSchema struct {
 }
 
 type QueryResponse struct {
-	Table  string              `json:"table"`
-	BufferAddress  string      `json:"bufferAddress"`
-	Field  []string            `json:"field"`
-	Values []map[string]string `json:"values"`
+	Table []string `json:"table"`
+	// BufferAddress string   `json:"bufferAddress"`
+	Field     []string                       `json:"field"`
+	Values    map[string][]map[string]string `json:"values"`
+	TableData map[string]TableValues         `json:"tableData"`
+}
+
+type TableValues struct {
+	Values map[string][]string `json:"values"`
+}
+
+type Data struct {
+	Table       []string                       `json:"table"`
+	Field       []string                       `json:"feild"`
+	Values      map[string][]map[string]string `json:"values"`
+	GroupNames  []string                       `json:"groupNames"`
+	SelectWords []string                       `json:"selectwords"`
 }

@@ -7,28 +7,28 @@ import (
 	"log"
 	"net/http"
 	types "output/type"
-	"time"
 )
 
 type FilterData struct {
-	Result   types.QueryResponse `json:"result"`
-	TempData map[string][]string `json:"tempData"`
+	Result   types.QueryResponse          `json:"result"`
+	TempData map[string]types.TableValues `json:"tempData"`
 }
 
 type ResponseA struct {
-	Code    int         `json:"code"`
-	Message string      `json:"message"`
-	Data    interface{} `json:"data"`
+	Code    int        `json:"code"`
+	Message string     `json:"message"`
+	Data    types.Data `json:"data"`
 }
 
 //결과 받아서 host서버에 전달
 func Output(w http.ResponseWriter, r *http.Request) {
 	//data := []byte("Response From Output Process")
 	//w.Write(data)
-
+	log.Println("start")
 	body, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		//klog.Errorln(err)
+		log.Println(err)
 	}
 
 	recieveData := &FilterData{}
@@ -41,7 +41,26 @@ func Output(w http.ResponseWriter, r *http.Request) {
 	result := &recieveData.Result
 	tempData := recieveData.TempData
 
-	tmp := makeResponse(result, tempData)
+	data := types.Data{
+		Table:  result.Table,
+		Field:  result.Field,
+		Values: result.Values,
+	}
+
+	// testJson, err := json.Marshal(data.Values)
+	// log.Println(string(testJson))
+
+	result.TableData = tempData
+
+	res := ResponseA{
+		Code:    200,
+		Message: "kjh test",
+		Data:    data,
+	}
+	log.Println("end")
+	// log.Println(res.Data.Field)
+
+	// tmp := makeResponse(result, tempData)
 
 	// 0927 kjh update
 	// endMeasureUrl := "http://localhost:50500/end/measure"
@@ -53,12 +72,17 @@ func Output(w http.ResponseWriter, r *http.Request) {
 
 	// body, _ := ioutil.ReadAll(res.Body)
 
-	content, err := json.Marshal(tmp)
+	log.Println("marshal start")
+	content, err := json.Marshal(res)
+	if err != nil {
+		log.Println(err)
+	}
+	log.Println("marshal end")
 
 	if err != nil {
 		abort(w, 500)
 	} else {
-		w.WriteHeader(tmp.Code)
+		w.WriteHeader(res.Code)
 		w.Write(content)
 	}
 
@@ -68,6 +92,7 @@ func abort(rw http.ResponseWriter, statusCode int) {
 	rw.WriteHeader(statusCode)
 }
 
+/*
 func makeResponse(resp *types.QueryResponse, resultData map[string][]string) ResponseA {
 	fmt.Println(time.Now().Format(time.StampMilli), "Prepare Output Response...")
 	maxLen := 0
@@ -98,7 +123,7 @@ func makeResponse(resp *types.QueryResponse, resultData map[string][]string) Res
 	r := ResponseA{200, "OK", *resp}
 
 	return r
-}
+}*/
 
 func main() {
 	log.SetFlags(log.Lshortfile)
