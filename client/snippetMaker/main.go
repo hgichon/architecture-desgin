@@ -209,10 +209,10 @@ func RequestSnippet(query string, SchedulerIP string, SchedulerPort string) {
 				/*
 					Print Result Json Data
 				*/
-				//filltered_res_byte, _ := json.MarshalIndent(filltered_res, "", "  ")
+				filltered_res_byte, _ := json.MarshalIndent(filltered_res, "", "  ")
 
-				//fmt.Println("\n[ Result ]")
-				//fmt.Println(string(filltered_res_byte))
+				fmt.Println("\n[ Result ]")
+				fmt.Println(string(filltered_res_byte))
 				/*
 					Print Result Json Data End
 				*/
@@ -641,6 +641,7 @@ func do_select(res Response, select_str string) Response {
 						}
 						GDataMap[strings.ToUpper(selectword.AsColumn)] = total_res_str
 					}
+					log.Println("GDataMap:", GDataMap)
 
 				}
 			}
@@ -674,6 +675,7 @@ func do_select(res Response, select_str string) Response {
 	for i := 0; i < len(res.Data.Values); i++ {
 		groupName := <-chGroupName
 		GDataMap := <-chData
+
 		selected_res.Data.Values[groupName] = append(selected_res.Data.Values[groupName], GDataMap)
 	}
 
@@ -860,6 +862,6 @@ func main() {
 	//query := "SELECT C_NAME, C_ADDRESS, C_PHONE, C_CUSTKEY FROM customer WHERE C_CUSTKEY=525"
 	// query := "SELECT C_CUSTKEY FROM customer"
 	//query := "select l_returnflag, l_linestatus, sum(l_quantity) as sum_qty, sum(l_extendedprice) as sum_base_price, sum(l_extendedprice * (1 - l_discount)) as sum_disc_price, sum(l_extendedprice * (1 - l_discount) * (1 + l_tax)) as sum_charge, avg(l_quantity) as avg_qty, avg(l_extendedprice) as avg_price, avg(l_discount) as avg_disc, count(*) as count_order from lineitem where l_shipdate <= date '1998-12-01' - interval '108' day group by l_returnflag, l_linestatus order by l_returnflag, l_linestatus;"
-	query := "select l_returnflag, l_linestatus, sum(l_quantity) as sum_qty, sum(l_extendedprice) as sum_base_price, sum(l_extendedprice * (1 - l_discount)) as sum_disc_price, sum(l_extendedprice * (1 - l_discount) * (1 + l_tax)) as sum_charge, avg(l_quantity) as avg_qty, avg(l_extendedprice) as avg_price, avg(l_discount) as avg_disc, count(*) as count_order from lineitem where l_shipdate <= date '1998-12-01' - interval '108' day order by l_returnflag, l_linestatus;"
+	query := "select l_returnflag, l_linestatus, L_ORDERKEY, L_PARTKEY, L_SUPPKEY, L_LINENUMBER, L_QUANTITY, L_EXTENDEDPRICE, L_DISCOUNT, L_TAX, L_SHIPDATE, L_COMMITDATE from lineitem where l_shipdate <= date '1998-12-01' - interval '108' day order by l_returnflag, l_linestatus;"
 	RequestSnippet(query, SchedulerIP, SchedulerPort)
 }
