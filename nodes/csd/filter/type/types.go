@@ -46,3 +46,11 @@ type QueryResponse struct {
 type TableValues struct {
 	Values map[string][]string `json:"values"`
 }
+
+type Data struct {
+	Table       []string                       `json:"table"`
+	Field       []string                       `json:"feild"`
+	Values      map[string][]map[string]string `json:"values"`
+	GroupNames  []string                       `json:"groupNames"`
+	SelectWords []string                       `json:"selectwords"`
+}

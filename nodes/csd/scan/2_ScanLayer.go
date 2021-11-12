@@ -11,11 +11,12 @@ import (
 	"net/http"
 	"os"
 	types "scan/type"
+	"strings"
 )
 
-const rootDirectory = "/home/ngd/workspace/usr/kch/ditributed/nodes/csd/data/csv/"
+// const rootDirectory = "/home/ngd/workspace/usr/kch/ditributed/nodes/csd/data/csv/"
 
-// const rootDirectory = "/root/workspace/usr/coyg/module/tpch/"
+const rootDirectory = "/root/workspace/usr/coyg/module/tpch/"
 
 type ScanData struct {
 	Snippet   types.Snippet                `json:"snippet"`
@@ -40,9 +41,19 @@ func Scan(w http.ResponseWriter, r *http.Request) {
 	data := recieveData
 	log.Println("recieveData", data)
 
+	// 테이블 명 모두 소문자로 변경
+	log.Println(data.TableNames)
+	var tblArr []string
+	for _, i := range data.TableNames {
+		tblArr = append(tblArr, strings.ToLower(i))
+	}
+	data.TableNames = tblArr
+	log.Println(data.TableNames)
+
 	log.Println("Check Snippet : ", data) //Snippet Validate Check
 	resp := &types.QueryResponse{
 		TableNames: data.TableNames,
+		// TableNames: tblArr,
 		// Field:      makeColumnToString(data.Parsedquery.Columns, data.TableSchema),
 		// Values:     make([]map[string]string, 0),
 		TableData: make(map[string]types.TableValues),
@@ -83,10 +94,16 @@ func Scan(w http.ResponseWriter, r *http.Request) {
 
 	// fmt.Println(time.Now().Format(time.StampMilli), "Send to Filtering Data...")
 
+	log.Println("scandata make")
 	filterBody := &ScanData{}
 	filterBody.Snippet = *data
 	filterBody.Tabledata = resp.TableData
+	log.Println(filterBody.Snippet)
+	for key, _ := range filterBody.Tabledata {
+		log.Println(key)
+	}
 
+	log.Println("marshall start")
 	filterJson, err := json.Marshal(filterBody)
 	if err != nil {
 		fmt.Println(err)

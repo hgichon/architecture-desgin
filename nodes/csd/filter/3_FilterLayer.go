@@ -27,6 +27,12 @@ type FilterData struct {
 	TempData map[string]types.TableValues `json:"tempData"`
 }
 
+type ResponseA struct {
+	Code    int        `json:"code"`
+	Message string     `json:"message"`
+	Data    types.Data `json:"data"`
+}
+
 //where/column 필터링
 func Filtering(w http.ResponseWriter, r *http.Request) {
 	body, err := ioutil.ReadAll(r.Body)
@@ -36,6 +42,7 @@ func Filtering(w http.ResponseWriter, r *http.Request) {
 	}
 	log.Println("body read")
 
+	st := time.Now()
 	recieveData := &ScanData{}
 	err = json.Unmarshal(body, recieveData)
 	if err != nil {
@@ -43,7 +50,10 @@ func Filtering(w http.ResponseWriter, r *http.Request) {
 		log.Println(err)
 	}
 	log.Println("marshalling end")
+	et := time.Since(st).Seconds()
+	log.Println(et, "SEC")
 
+	st = time.Now()
 	data := recieveData.Snippet
 	tableData := recieveData.Tabledata
 
@@ -56,7 +66,9 @@ func Filtering(w http.ResponseWriter, r *http.Request) {
 	} else {
 		log.Println("checking where")
 		// log.Println(tableData["lineitem"].Values["L_SHIPDATE"][0])
+
 		tempData = checkWhere(data.WhereClauses[0], data.TableSchema, tableData, data.TableNames)
+
 		// log.Println(tempData)
 		if data.WhereClauses[0].Operator != "NULL" {
 			prevOerator := data.WhereClauses[0].Operator
@@ -116,7 +128,7 @@ func Filtering(w http.ResponseWriter, r *http.Request) {
 	values := map[string][]map[string]string{}
 	var arr []map[string]string
 	val := map[string]string{}
-	key := "none-group"
+	key := ""
 	idx := 0
 	firstTbl := data.TableNames[0]
 	colName := data.TableSchema[firstTbl].ColumnNames[0]
@@ -148,8 +160,8 @@ func Filtering(w http.ResponseWriter, r *http.Request) {
 	values[key] = arr
 	log.Println()
 	// log.Println(values[key])
-
-	log.Println(values[key][0])
+	//
+	// log.Println(values[key][0])
 	log.Println(len(values[key]))
 
 	resp := &types.QueryResponse{
@@ -164,14 +176,22 @@ func Filtering(w http.ResponseWriter, r *http.Request) {
 	outputBody.Result = *resp
 	outputBody.TempData = tempData
 
+	et = time.Since(st).Seconds()
+	log.Println(et, "SEC")
+
+	// st = time.Now()
 	log.Println("marshalling start")
+	st = time.Now()
 	outputJson, err := json.Marshal(outputBody)
 	if err != nil {
 		log.Println(err)
 	}
 	log.Println("endeeddd")
+	// log.Println(string(outputJson))
 	outputJson_buff := bytes.NewBuffer(outputJson)
 
+	et = float64(time.Since(st).Seconds())
+	log.Println(et, "SEC")
 	outputJson_real_buff := outputJson_buff
 	req, err := http.NewRequest("POST", "http://:8188", outputJson_real_buff)
 
@@ -293,6 +313,7 @@ func checkWhere(where types.Where, schema map[string]types.TableSchema, tableDat
 				// log.Println("i:", i)
 				defer wait.Done()
 				// wait.Add(1)
+				// TODO: csv 바꾸고 제거해야함
 				changeCol := strings.Replace(currentColumn[i], ".", "-", -1)
 				changeColList := strings.Split(changeCol, "-")
 				for idx, j := range changeColList {

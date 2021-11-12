@@ -109,8 +109,13 @@ func RequestSnippet(query string, SchedulerIP string, SchedulerPort string) {
 		//fmt.Println("httperr : ", err)
 	} else {
 
+		startTime := time.Now()
+
 		client := &http.Client{}
 		resp, errclient := client.Do(req)
+
+		endTime := time.Since(startTime).Seconds()
+		fmt.Printf("Fillter Where in CSD : %0.1f sec\n", endTime)
 
 		if errclient != nil {
 			//fmt.Println("resperr : ", errclient)
@@ -143,7 +148,7 @@ func RequestSnippet(query string, SchedulerIP string, SchedulerPort string) {
 			// 		"L_COMMENT"
 			// 	  ],
 			// 	  "values": {
-			// 		"none_group": [
+			// 		"": [
 			// 		  {
 			// 			"L_ORDERKEY": "1",
 			// 			"L_PARTKEY": "15519",
@@ -202,17 +207,17 @@ func RequestSnippet(query string, SchedulerIP string, SchedulerPort string) {
 			// 	  }
 			// 	}
 			//   }`
-			// fmt.Println("jsonDataString:", jsonDataString)
+
 			res := resJsonParser(jsonDataString)
 			if res.Code == 200 {
 				filltered_res := Fillter(res, select_str, group_by_str, having_str, order_by_str)
 				/*
 					Print Result Json Data
 				*/
-				filltered_res_byte, _ := json.MarshalIndent(filltered_res, "", "  ")
+				// filltered_res_byte, _ := json.MarshalIndent(filltered_res, "", "  ")
 
-				fmt.Println("\n[ Result ]")
-				fmt.Println(string(filltered_res_byte))
+				// fmt.Println("\n[ Result ]")
+				// fmt.Println(string(filltered_res_byte))
 				/*
 					Print Result Json Data End
 				*/
@@ -225,7 +230,7 @@ func RequestSnippet(query string, SchedulerIP string, SchedulerPort string) {
 		}
 	}
 	endTime := time.Since(startTime).Seconds()
-	fmt.Printf("%0.1f sec\n", endTime)
+	fmt.Printf("Total : %0.1f sec\n", endTime)
 
 }
 func getTableSchema(tableName string) TableSchema {
@@ -468,10 +473,6 @@ func do_select(res Response, select_str string) Response {
 
 	asColumns := []string{}
 	selected_res := res
-	selected_res.Data.Values = make(map[string][]map[string]string)
-	for k, _ := range res.Data.Values {
-		selected_res.Data.Values[k] = make([]map[string]string, 0)
-	}
 
 	selected_res.Data.SelectWords = make([]SelectWord, 0)
 
@@ -532,26 +533,36 @@ func do_select(res Response, select_str string) Response {
 
 	selected_res.Data.Field = asColumns
 
+	if res.Data.GroupNames[0] == "" {
+		return selected_res
+	}
+
+	selected_res.Data.Values = make(map[string][]map[string]string)
+	for k, _ := range res.Data.Values {
+		selected_res.Data.Values[k] = make([]map[string]string, 0)
+	}
+
 	//log.Println("len: ", len(res.Data.Values))
 
 	var wg sync.WaitGroup
 	chGroupName := make(chan string, len(res.Data.Values))
 	chData := make(chan map[string]string, len(res.Data.Values))
-
+	wg.Add(len(res.Data.Values))
 	for groupName, groupDatas := range res.Data.Values {
+
 		go func(groupName string, groupDatas []map[string]string, chGroupName chan string, chData chan map[string]string) {
 			defer wg.Done()
-			wg.Add(1)
 
 			GDataMap := make(map[string]string)
 
 			var wg2 sync.WaitGroup
 			ch2 := make(chan map[string]string, len(groupDatas))
+			wg2.Add(len(groupDatas))
 			for _, groupData := range groupDatas {
 
 				go func(groupData map[string]string, ch2 chan map[string]string) {
 					defer wg2.Done()
-					wg2.Add(1)
+
 					//log.Println("Go Routine")
 
 					tmpGDataMap := make(map[string]string)
@@ -641,7 +652,7 @@ func do_select(res Response, select_str string) Response {
 						}
 						GDataMap[strings.ToUpper(selectword.AsColumn)] = total_res_str
 					}
-					log.Println("GDataMap:", GDataMap)
+					// log.Println("GDataMap:", GDataMap)
 
 				}
 			}
@@ -671,7 +682,9 @@ func do_select(res Response, select_str string) Response {
 		}(groupName, groupDatas, chGroupName, chData)
 
 	}
+
 	wg.Wait() // 모든 고루틴이 종료될 때까지 대기
+
 	for i := 0; i < len(res.Data.Values); i++ {
 		groupName := <-chGroupName
 		GDataMap := <-chData
@@ -679,7 +692,7 @@ func do_select(res Response, select_str string) Response {
 		selected_res.Data.Values[groupName] = append(selected_res.Data.Values[groupName], GDataMap)
 	}
 
-	fmt.Println(selected_res.Data.Values)
+	//fmt.Println(selected_res.Data.Values)
 
 	// for _, group := range res.Data.Values {
 	// 	for _, record := range group {
@@ -737,7 +750,7 @@ func do_order_by(res Response, order_by_str string) Response {
 
 	//fmt.Println("mapData:", mapDatas)
 
-	order_by_res.Data.Values["none-group"] = mapDatas
+	order_by_res.Data.Values[""] = mapDatas
 
 	return order_by_res
 
@@ -759,12 +772,35 @@ func do_convert_data(res Response) Response {
 }
 func Fillter(res Response, select_str, group_by_str, having_str, order_by_str string) Response {
 
-	res = do_convert_data(res)
+	// res_byte, _ := json.MarshalIndent(res, "", "  ")
+
+	// fmt.Println("\n[ res_byte ]")
+	// fmt.Println(string(res_byte))
+
+	// res = do_convert_data(res)
+
+	startTime := time.Now()
+
 	res = do_group_by(res, group_by_str)
+
+	endTime := time.Since(startTime).Seconds()
+	fmt.Printf("do_group_by: %0.1f sec\n", endTime)
+
+	startTime = time.Now()
+
 	res = do_select(res, select_str)
+
+	endTime = time.Since(startTime).Seconds()
+	fmt.Printf("do_select: %0.1f sec\n", endTime)
+
 	// res = do_having(res, having_str)
 
+	startTime = time.Now()
+
 	res = do_order_by(res, order_by_str)
+
+	endTime = time.Since(startTime).Seconds()
+	fmt.Printf("do_order_by: %0.1f sec\n", endTime)
 
 	return res
 }
@@ -780,7 +816,8 @@ func SplitAny(s string, seps string) []string {
 
 func resJsonParser(jsonDataString string) Response {
 	var res Response
-	jsonDataString = strings.Replace(jsonDataString, "No Servers Available", "", -1)
+
+	// jsonDataString = strings.Replace(jsonDataString, "No Servers Available", "", -1)
 
 	if err := json.Unmarshal([]byte(jsonDataString), &res); err != nil {
 		log.Fatal(err)
@@ -861,7 +898,8 @@ func main() {
 	// query := "SELECT sum(C_CUSTKEY) FROM customer WHERE C_NAME='a' and C_CUSTKEY='1' and C_CUSTKEY='2' and C_CUSTKEY='3'"
 	//query := "SELECT C_NAME, C_ADDRESS, C_PHONE, C_CUSTKEY FROM customer WHERE C_CUSTKEY=525"
 	// query := "SELECT C_CUSTKEY FROM customer"
-	//query := "select l_returnflag, l_linestatus, sum(l_quantity) as sum_qty, sum(l_extendedprice) as sum_base_price, sum(l_extendedprice * (1 - l_discount)) as sum_disc_price, sum(l_extendedprice * (1 - l_discount) * (1 + l_tax)) as sum_charge, avg(l_quantity) as avg_qty, avg(l_extendedprice) as avg_price, avg(l_discount) as avg_disc, count(*) as count_order from lineitem where l_shipdate <= date '1998-12-01' - interval '108' day group by l_returnflag, l_linestatus order by l_returnflag, l_linestatus;"
-	query := "select l_returnflag, l_linestatus, L_ORDERKEY, L_PARTKEY, L_SUPPKEY, L_LINENUMBER, L_QUANTITY, L_EXTENDEDPRICE, L_DISCOUNT, L_TAX, L_SHIPDATE, L_COMMITDATE from lineitem where l_shipdate <= date '1998-12-01' - interval '108' day order by l_returnflag, l_linestatus;"
+	query := "select l_returnflag, l_linestatus, sum(l_quantity) as sum_qty, sum(l_extendedprice) as sum_base_price, sum(l_extendedprice * (1 - l_discount)) as sum_disc_price, sum(l_extendedprice * (1 - l_discount) * (1 + l_tax)) as sum_charge, avg(l_quantity) as avg_qty, avg(l_extendedprice) as avg_price, avg(l_discount) as avg_disc, count(*) as count_order from lineitem where l_shipdate <= date '1998-12-01' - interval '108' day group by l_returnflag, l_linestatus order by l_returnflag, l_linestatus;"
+	//query := "select l_returnflag, l_linestatus, L_ORDERKEY, L_PARTKEY, L_SUPPKEY, L_LINENUMBER, L_QUANTITY, L_EXTENDEDPRICE, L_DISCOUNT, L_TAX, L_SHIPDATE, L_COMMITDATE from lineitem where l_shipdate <= date '1998-12-01' - interval '108' day order by l_returnflag, l_linestatus;"
+	//query := "select l_returnflag, l_linestatus,L_TAX, L_SHIPDATE, L_COMMITDATE from lineitem where l_shipdate <= date '1818-12-01' - interval '108' day;"
 	RequestSnippet(query, SchedulerIP, SchedulerPort)
 }

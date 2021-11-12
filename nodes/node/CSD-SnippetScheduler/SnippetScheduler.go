@@ -106,7 +106,7 @@ func (serverList *ServerList) snippetScheduler(w http.ResponseWriter, r *http.Re
 
 				serverList.Latest = index
 				//log.Println("Updated Latest Server To:", serverList.Latest)
-
+				return
 			}
 			serverCount++
 			serverList.Latest = serverList.nextServer()
