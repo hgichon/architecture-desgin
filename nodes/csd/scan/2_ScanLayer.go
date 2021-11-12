@@ -12,6 +12,7 @@ import (
 	"os"
 	types "scan/type"
 	"strings"
+	"time"
 )
 
 // const rootDirectory = "/home/ngd/workspace/usr/kch/ditributed/nodes/csd/data/csv/"
@@ -25,7 +26,7 @@ type ScanData struct {
 
 //데이터 파일 읽어옴
 func Scan(w http.ResponseWriter, r *http.Request) {
-
+	st := time.Now()
 	body, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		//klog.Errorln(err)
@@ -37,6 +38,7 @@ func Scan(w http.ResponseWriter, r *http.Request) {
 		//klog.Errorln(err)
 		log.Println(err)
 	}
+	log.Println("Marshall", time.Since(st).Seconds(), "SEC")
 
 	data := recieveData
 	log.Println("recieveData", data)
@@ -71,6 +73,7 @@ func Scan(w http.ResponseWriter, r *http.Request) {
 	// fmt.Println(time.Now().Format(time.StampMilli), "Scanning...")
 
 	// csv read
+	st = time.Now()
 	for i := 0; i < len(data.TableNames); i++ {
 		tableCSV, err := os.Open(rootDirectory + data.TableNames[i] + ".csv")
 		log.Println(rootDirectory + data.TableNames[i] + ".csv")
@@ -90,6 +93,7 @@ func Scan(w http.ResponseWriter, r *http.Request) {
 
 		resp.TableData[data.TableNames[i]] = tableData
 	}
+	log.Println("CSV SCAN", time.Since(st).Seconds(), "SEC")
 	log.Println("Send to Filtering Data...")
 
 	// fmt.Println(time.Now().Format(time.StampMilli), "Send to Filtering Data...")

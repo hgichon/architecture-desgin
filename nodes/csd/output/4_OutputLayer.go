@@ -1,12 +1,11 @@
 package main
 
 import (
-	"encoding/json"
-	"fmt"
 	"io/ioutil"
 	"log"
 	"net/http"
 	types "output/type"
+	"time"
 )
 
 type FilterData struct {
@@ -25,65 +24,68 @@ func Output(w http.ResponseWriter, r *http.Request) {
 	//data := []byte("Response From Output Process")
 	//w.Write(data)
 	log.Println("start")
+	st := time.Now()
 	body, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		//klog.Errorln(err)
 		log.Println(err)
 	}
 
-	recieveData := &FilterData{}
-	err = json.Unmarshal(body, recieveData)
-	if err != nil {
-		//klog.Errorln(err)
-		fmt.Println(err)
-	}
+	/*
+			recieveData := &FilterData{}
+			err = json.Unmarshal(body, recieveData)
+			if err != nil {
+				//klog.Errorln(err)
+				fmt.Println(err)
+			}
 
-	result := &recieveData.Result
-	tempData := recieveData.TempData
+			result := &recieveData.Result
+			tempData := recieveData.TempData
 
-	data := types.Data{
-		Table:  result.Table,
-		Field:  result.Field,
-		Values: result.Values,
-	}
+			data := types.Data{
+				Table:  result.Table,
+				Field:  result.Field,
+				Values: result.Values,
+			}
 
-	// testJson, err := json.Marshal(data.Values)
-	// log.Println(string(testJson))
+			// testJson, err := json.Marshal(data.Values)
+			// log.Println(string(testJson))
 
-	result.TableData = tempData
+			result.TableData = tempData
 
-	res := ResponseA{
-		Code:    200,
-		Message: "kjh test",
-		Data:    data,
-	}
+			res := ResponseA{
+				Code:    200,
+				Message: "kjh test",
+				Data:    data,
+			}
+			log.Println("end")
+			// log.Println(res.Data.Field)
+
+		// tmp := makeResponse(result, tempData)
+
+		// 0927 kjh update
+		// endMeasureUrl := "http://localhost:50500/end/measure"
+		// res, err := http.Get(endMeasureUrl)
+		// if err != nil {
+		// 	fmt.Println(err)
+		// }
+		// fmt.Println(res)
+
+		// body, _ := ioutil.ReadAll(res.Body)
+		log.Println("marshal start")
+		content, err := json.Marshal(res)
+		if err != nil {
+			log.Println(err)
+		}
+		log.Println("marshal end")
+	*/
+	log.Println(time.Since(st).Seconds(), "SEC")
 	log.Println("end")
-	// log.Println(res.Data.Field)
-
-	// tmp := makeResponse(result, tempData)
-
-	// 0927 kjh update
-	// endMeasureUrl := "http://localhost:50500/end/measure"
-	// res, err := http.Get(endMeasureUrl)
-	// if err != nil {
-	// 	fmt.Println(err)
-	// }
-	// fmt.Println(res)
-
-	// body, _ := ioutil.ReadAll(res.Body)
-
-	log.Println("marshal start")
-	content, err := json.Marshal(res)
-	if err != nil {
-		log.Println(err)
-	}
-	log.Println("marshal end")
-
 	if err != nil {
 		abort(w, 500)
 	} else {
-		w.WriteHeader(res.Code)
-		w.Write(content)
+		w.WriteHeader(200)
+		w.Write(body)
 	}
 
 }

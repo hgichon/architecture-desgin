@@ -181,8 +181,21 @@ func Filtering(w http.ResponseWriter, r *http.Request) {
 
 	// st = time.Now()
 	log.Println("marshalling start")
+	result := &outputBody.Result
+	// td := outputBody.TempData
+	newData := types.Data{
+		Table:  result.Table,
+		Field:  result.Field,
+		Values: resp.Values,
+	}
+	res := ResponseA{
+		Code:    200,
+		Message: "success",
+		Data:    newData,
+	}
+
 	st = time.Now()
-	outputJson, err := json.Marshal(outputBody)
+	outputJson, err := json.Marshal(res)
 	if err != nil {
 		log.Println(err)
 	}
