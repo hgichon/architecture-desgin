@@ -26,6 +26,7 @@ type ScanData struct {
 
 //데이터 파일 읽어옴
 func Scan(w http.ResponseWriter, r *http.Request) {
+	first := time.Now()
 	st := time.Now()
 	body, err := ioutil.ReadAll(r.Body)
 	if err != nil {
@@ -116,7 +117,7 @@ func Scan(w http.ResponseWriter, r *http.Request) {
 	filterJson_buff := bytes.NewBuffer(filterJson)
 
 	req, err := http.NewRequest("POST", "http://:8187", filterJson_buff)
-
+	log.Println("TIME SCAN", time.Since(first).Seconds(), "SEC")
 	if err != nil {
 		log.Println("httperr : ", err)
 	} else {

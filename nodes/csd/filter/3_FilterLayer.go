@@ -10,10 +10,8 @@ import (
 	"net/http"
 	"reflect"
 	"runtime"
-	"sort"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 )
 
@@ -35,6 +33,7 @@ type ResponseA struct {
 
 //where/column 필터링
 func Filtering(w http.ResponseWriter, r *http.Request) {
+	first := time.Now()
 	body, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		//klog.Errorln(err)
@@ -51,7 +50,7 @@ func Filtering(w http.ResponseWriter, r *http.Request) {
 	}
 	log.Println("marshalling end")
 	et := time.Since(st).Seconds()
-	log.Println(et, "SEC")
+	log.Println("First Marshalling", et, "SEC")
 
 	st = time.Now()
 	data := recieveData.Snippet
@@ -104,6 +103,8 @@ func Filtering(w http.ResponseWriter, r *http.Request) {
 
 		}
 	}
+	et = time.Since(st).Seconds()
+	log.Println("Filtering", et, "SEC")
 
 	fmt.Println(time.Now().Format(time.StampMilli), "Send to Output Layer")
 	var fields []string
@@ -125,6 +126,7 @@ func Filtering(w http.ResponseWriter, r *http.Request) {
 
 	// log.Println(data.TableNames[0])
 	// values
+	st = time.Now()
 	values := map[string][]map[string]string{}
 	var arr []map[string]string
 	val := map[string]string{}
@@ -163,7 +165,7 @@ func Filtering(w http.ResponseWriter, r *http.Request) {
 	//
 	// log.Println(values[key][0])
 	log.Println(len(values[key]))
-
+	log.Println("Data Parsing", time.Since(st).Seconds(), "SEC")
 	resp := &types.QueryResponse{
 		Table: data.TableNames,
 		// BufferAddress: data.BufferAddress,
@@ -176,11 +178,9 @@ func Filtering(w http.ResponseWriter, r *http.Request) {
 	outputBody.Result = *resp
 	outputBody.TempData = tempData
 
-	et = time.Since(st).Seconds()
-	log.Println(et, "SEC")
-
 	// st = time.Now()
 	log.Println("marshalling start")
+	log.Println("resp value:", len(resp.Values[key]))
 	result := &outputBody.Result
 	// td := outputBody.TempData
 	newData := types.Data{
@@ -193,6 +193,7 @@ func Filtering(w http.ResponseWriter, r *http.Request) {
 		Message: "success",
 		Data:    newData,
 	}
+	log.Println(len(res.Data.Values[key]))
 
 	st = time.Now()
 	outputJson, err := json.Marshal(res)
@@ -203,11 +204,11 @@ func Filtering(w http.ResponseWriter, r *http.Request) {
 	// log.Println(string(outputJson))
 	outputJson_buff := bytes.NewBuffer(outputJson)
 
-	et = float64(time.Since(st).Seconds())
-	log.Println(et, "SEC")
+	log.Println("LAST MARSHALLING", time.Since(st).Seconds(), "SEC")
 	outputJson_real_buff := outputJson_buff
 	req, err := http.NewRequest("POST", "http://:8188", outputJson_real_buff)
-
+	log.Println("Filtering time", time.Since(first).Seconds(), "SEC")
+	log.Println()
 	if err != nil {
 		log.Println("httperr : ", err)
 	} else {
@@ -314,79 +315,79 @@ func checkWhere(where types.Where, schema map[string]types.TableSchema, tableDat
 		// subSize := len(currentColumn) / cpuCnt
 		// start := 0
 		// end := subSize
-		var wait sync.WaitGroup
-		wait.Add(len(currentColumn))
-		c := make(chan int, len(currentColumn))
+		// var wait sync.WaitGroup
+		// wait.Add(len(currentColumn))
+		// c := make(chan int, len(currentColumn))
 		// for j := 0; j < subSize+1; j++ {
 		// defer wait.Done()
 		// var subResultIndex []int
 		log.Println("len", len(currentColumn))
 		for i := 0; i < len(currentColumn); i++ {
-			go func(i int, c chan int) {
-				// log.Println("i:", i)
-				defer wait.Done()
-				// wait.Add(1)
-				// TODO: csv 바꾸고 제거해야함
-				changeCol := strings.Replace(currentColumn[i], ".", "-", -1)
-				changeColList := strings.Split(changeCol, "-")
-				for idx, j := range changeColList {
-					if len(j) == 1 {
-						changeColList[idx] = "0" + j
-					}
+			// go func(i int, c chan int) {
+			// log.Println("i:", i)
+			// defer wait.Done()
+			// wait.Add(1)
+			// TODO: csv 바꾸고 제거해야함
+			changeCol := strings.Replace(currentColumn[i], ".", "-", -1)
+			changeColList := strings.Split(changeCol, "-")
+			for idx, j := range changeColList {
+				if len(j) == 1 {
+					changeColList[idx] = "0" + j
 				}
-				changeCol = strings.Join(changeColList, "-")
-				// log.Println(changeCol)
-				lv, err := time.Parse("2006-01-02", changeCol)
-				if err != nil {
-					//klog.Errorln(err)
-					log.Println(err)
+			}
+			changeCol = strings.Join(changeColList, "-")
+			// log.Println(changeCol)
+			lv, err := time.Parse("2006-01-02", changeCol)
+			if err != nil {
+				//klog.Errorln(err)
+				log.Println(err)
+			}
+			// log.Println(lv)
+			switch where.Exp {
+			case "=":
+				if lv.Unix() == rv.Unix() {
+					resultIndex = append(resultIndex, i)
+					// c <- i
 				}
-				// log.Println(lv)
-				switch where.Exp {
-				case "=":
-					if lv.Unix() == rv.Unix() {
-						// subResultIndex = append(subResultIndex, i)
-						c <- i
-					}
-					// else {
-					// 	continue
-					// }
-				case ">=":
-					if lv.Unix() >= rv.Unix() {
-						// subResultIndex = append(subResultIndex, i)
-						c <- i
-					}
-					// else {
-					// 	continue
-					// }
-				case "<=":
-					if lv.Unix() <= rv.Unix() {
-						// subResultIndex = append(subResultIndex, i)
-						c <- i
-					}
-					// else {
-					// 	continue
-					// }
-				case ">":
-					if lv.Unix() > rv.Unix() {
-						// subResultIndex = append(subResultIndex, i)
-						c <- i
-					}
-					// else {
-					// 	continue
-					// }
-				case "<":
-					if lv.Unix() < rv.Unix() {
-						// subResultIndex = append(subResultIndex, i)
-						c <- i
-					}
-					// else {
-					// 	continue
-					// }
+				// else {
+				// 	continue
+				// }
+			case ">=":
+				if lv.Unix() >= rv.Unix() {
+					resultIndex = append(resultIndex, i)
+					// c <- i
+				}
+				// else {
+				// 	continue
+				// }
+			case "<=":
+				if lv.Unix() <= rv.Unix() {
+					resultIndex = append(resultIndex, i)
+					// c <- i
+				}
+				// else {
+				// 	continue
+				// }
+			case ">":
+				if lv.Unix() > rv.Unix() {
+					resultIndex = append(resultIndex, i)
+					// c <- i
+				}
+				// else {
+				// 	continue
+				// }
+			case "<":
+				if lv.Unix() < rv.Unix() {
+					resultIndex = append(resultIndex, i)
+					// c <- i
+				}
+				// else {
+				// 	continue
+				// }
 
-				}
-				// c <- subResultIndex
-			}(i, c)
+			}
+			// c <- subResultIndex
+			// }(i, c)
 		}
 		// start += subSize
 		// if end+subSize > len(currentColumn) {
@@ -395,16 +396,16 @@ func checkWhere(where types.Where, schema map[string]types.TableSchema, tableDat
 		// 	end += subSize
 		// }
 		// }
-		wait.Wait()
+		// wait.Wait()
 		log.Println("asdfsdf")
 		// sum := 0
-		for i := 0; i < len(c); i++ {
-			sub := <-c
-			// log.Println(i, len(subs))
-			// sum += len(subs)
-			resultIndex = append(resultIndex, sub)
-		}
-		sort.Ints(resultIndex)
+		// for i := 0; i < len(c); i++ {
+		// 	sub := <-c
+		// 	// log.Println(i, len(subs))
+		// 	// sum += len(subs)
+		// 	resultIndex = append(resultIndex, sub)
+		// }
+		// sort.Ints(resultIndex)
 		// log.Println(sum)
 		log.Println(len(resultIndex))
 	} else {
