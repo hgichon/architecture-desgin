@@ -1,10 +1,30 @@
 # github.com/Knetic/govaluate v3.0.0+incompatible
 ## explicit
 github.com/Knetic/govaluate
+# github.com/blastrain/vitess-sqlparser v0.0.0-20201030050434-a139afbb1aba
+## explicit
 # github.com/getlantern/deepcopy v0.0.0-20160317154340-7f45deb8130a
+## explicit
+# github.com/imantung/sqlstr v0.0.0-20190524071218-1ffc0268a4ae
+## explicit
+# github.com/json-iterator/go v1.1.12
+## explicit
+github.com/json-iterator/go
+# github.com/lfittl/pg_query_go v1.0.2
 ## explicit
 # github.com/mattn/go-runewidth v0.0.9
 github.com/mattn/go-runewidth
+# github.com/modern-go/concurrent v0.0.0-20180228061459-e0a39a4cb421
+github.com/modern-go/concurrent
+# github.com/modern-go/reflect2 v1.0.2
+github.com/modern-go/reflect2
 # github.com/olekukonko/tablewriter v0.0.5
 ## explicit
 github.com/olekukonko/tablewriter
+# github.com/xwb1989/sqlparser v0.0.0-20180606152119-120387863bf2
+## explicit
+github.com/xwb1989/sqlparser
+github.com/xwb1989/sqlparser/dependency/bytes2
+github.com/xwb1989/sqlparser/dependency/hack
+github.com/xwb1989/sqlparser/dependency/querypb
+github.com/xwb1989/sqlparser/dependency/sqltypes

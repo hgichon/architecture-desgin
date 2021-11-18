@@ -24,10 +24,10 @@ type Select struct {
 	AggregateValue string `json:"aggregateValue"`
 }
 type Where struct {
-	LeftValue  string `json:"leftValue"`
-	Exp        string `json:"exp"`
-	RightValue string `json:"rightValue"`
-	Operator   string `json:"operator"` // "AND": 뒤에 나오는 Where은 And조건, "OR": 뒤에 나오는 Where은 OR 조건, "NULL": 뒤에 나오는 조건 없음
+	LeftValue       string `json:"leftValue"`
+	CompOperator    string `json:"compOperator"`
+	RightValue      string `json:"rightValue"`
+	LogicalOperator string `json:"logicalOperator"`
 }
 type TableSchema struct {
 	ColumnNames []string `json:"columnNames"`
@@ -38,13 +38,14 @@ type TableSchema struct {
 type QueryResponse struct {
 	Table []string `json:"table"`
 	// BufferAddress string   `json:"bufferAddress"`
-	Field  []string                       `json:"field"`
+	Field []string `json:"field"`
+	// Values map[string]TableValues `json:"values"`
 	Values map[string][]map[string]string `json:"values"`
 	// TableData map[string]TableValues         `json:"tableData"`
 }
 
 type TableValues struct {
-	Values map[string][]string `json:"values"`
+	Values []map[string]string `json:"values"`
 }
 
 type Data struct {
@@ -53,4 +54,20 @@ type Data struct {
 	Values      map[string][]map[string]string `json:"values"`
 	GroupNames  []string                       `json:"groupNames"`
 	SelectWords []string                       `json:"selectwords"`
+}
+
+type ScanData struct {
+	Snippet   Snippet                `json:"snippet"`
+	Tabledata map[string]TableValues `json:"tabledata"`
+}
+
+type FilterData struct {
+	Result   QueryResponse          `json:"result"`
+	TempData map[string]TableValues `json:"tempData"`
+}
+
+type ResponseA struct {
+	Code    int    `json:"code"`
+	Message string `json:"message"`
+	Data    Data   `json:"data"`
 }

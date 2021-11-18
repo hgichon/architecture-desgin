@@ -96,6 +96,20 @@ func (serverList *ServerList) nextServer() int {
 // http.StatusServiceUnavailable status
 // back to the client
 func (serverList *ServerList) snippetScheduler(w http.ResponseWriter, r *http.Request) {
+	//log.Println("Scheduler Start")
+	//log.Println("Started Health Check For: CSD1(10.1.1.2:3000)")
+	//log.Println("CSD1(10.1.1.2:3000) Is Alive")
+	//log.Println("Started Table Check For: CSD1(10.1.1.2:3000)")
+	//log.Println("CSD1(10.1.1.2:3000) Exist Table")
+
+	//log.Println("Started Health Check For: CSD2(10.1.2.2:3000)")
+	//log.Println("CSD2(10.1.2.2:3000) Is Alive")
+	//log.Println("Started Table Check For: CSD2(10.1.1.2:3000)")
+	//log.Println("CSD2(10.1.2.2:3000) Exist Table")
+
+	//log.Println("Routing Request CSD1(10.1.1.2:3000)")
+	//log.Println("Routing Request CSD2(10.1.2.2:3000)")
+
 	if len(serverList.Servers) > 0 {
 		serverCount := 0
 		for index := serverList.nextServer(); serverCount < len(serverList.Servers); index = serverList.nextServer() {
@@ -130,8 +144,9 @@ func main() {
 		//"10.1.1.2:3000",
 		//"10.0.6.132:3000",
 		//"localhost:3000",
-		"10.1.1.2:8185",
-		"10.1.2.2:8185",
+		// "10.1.1.2:8185",
+		// "10.1.2.2:8185",
+		"10.0.5.101:8185",
 	}
 
 	serverList.init(serverRoutes)

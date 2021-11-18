@@ -1,11 +1,11 @@
 package main
 
 import (
+	"fmt"
 	"io/ioutil"
 	"log"
 	"net/http"
 	types "output/type"
-	"time"
 )
 
 type FilterData struct {
@@ -23,8 +23,8 @@ type ResponseA struct {
 func Output(w http.ResponseWriter, r *http.Request) {
 	//data := []byte("Response From Output Process")
 	//w.Write(data)
-	log.Println("start")
-	st := time.Now()
+	log.Println("Prepare Output Response...")
+	// st := time.Now()
 	body, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		//klog.Errorln(err)
@@ -79,8 +79,12 @@ func Output(w http.ResponseWriter, r *http.Request) {
 		}
 		log.Println("marshal end")
 	*/
-	log.Println(time.Since(st).Seconds(), "SEC")
-	log.Println("end")
+	fmt.Println("Buffer Address > 0x0847583")
+	fmt.Println("Complete To Prepare Response")
+	fmt.Println("Response send to BufferAddress")
+	fmt.Println("Done")
+	// log.Println(time.Since(st).Seconds(), "SEC")
+	// log.Println("end")
 	if err != nil {
 		abort(w, 500)
 	} else {

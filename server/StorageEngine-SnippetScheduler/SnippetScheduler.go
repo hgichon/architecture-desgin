@@ -12,6 +12,7 @@ import (
 // Server is used to describe the individual servers
 // that are connected to the Load Balancer
 type Server struct {
+	Name         string
 	Route        string
 	Alive        bool
 	ReverseProxy *httputil.ReverseProxy
@@ -31,7 +32,7 @@ type ServerList struct {
 func (server *Server) isAlive() bool {
 	timeout := time.Duration(1 * time.Second)
 
-	log.Println("Started Health Check For:", server.Route)
+	log.Println("Started Health Check For:", server.Name, "(", server.Route, ")")
 	_, err := net.DialTimeout("tcp", server.Route, timeout)
 	if err != nil {
 		log.Println(server.Route, "Is Dead")
@@ -40,7 +41,7 @@ func (server *Server) isAlive() bool {
 		return false
 	}
 
-	log.Println(server.Route, "Is Alive")
+	log.Println(server.Name, "(", server.Route, ")", "Is Alive")
 	server.Alive = true
 	return true
 }
@@ -50,12 +51,13 @@ func (server *Server) isAlive() bool {
 // the server and convert them to the Server
 // struct format and store them all
 // in ServerList.Servers slice
-func (serverList *ServerList) init(serverRoutes []string) {
+func (serverList *ServerList) init(serverRoutes map[string]string) {
 	log.Println("Creating Server List For Routes:", serverRoutes)
 
-	for _, serverRoute := range serverRoutes {
+	for serverName, serverRoute := range serverRoutes {
 		var localServer Server
 
+		localServer.Name = serverName
 		localServer.Route = serverRoute
 		localServer.Alive = localServer.isAlive()
 
@@ -121,28 +123,26 @@ func (serverList *ServerList) snippetScheduler(w http.ResponseWriter, r *http.Re
 // We can either import this as a package or use initialize
 // the ServerList by providing a list of server routes to
 // connect to and then create a server for the Load Balancer
-func main() {
+// func main() {
 
-	log.Println("Server State [ Running ]")
+// 	log.Println("Server State [ Running ]")
 
-	var serverList ServerList
-	loadBalancerPort := "8100"
+// 	var serverList ServerList
+// 	loadBalancerPort := "8100"
 
-	serverRoutes := []string{
-		//"10.1.1.2:3000",
-		//"10.0.6.132:3000",
-		//"localhost:3000",
-		"10.0.5.101:8101",
-		//"10.0.5.120:8101",
-	}
+// 	serv := make(map[string]string)
+// 	serv["Node1"] = "10.0.5.101:8101"
+// 	serv["Node2"] = "10.0.5.102:8101"
 
-	serverList.init(serverRoutes)
+// 	serverRoutes := serv
 
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		log.Println()
-		log.Println("Scheduler Start")
-		serverList.snippetScheduler(w, r)
-	})
+// 	serverList.init(serverRoutes)
 
-	http.ListenAndServe(":"+loadBalancerPort, nil)
-}
+// 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+// 		log.Println()
+// 		log.Println("Scheduler Start")
+// 		serverList.snippetScheduler(w, r)
+// 	})
+
+// 	http.ListenAndServe(":"+loadBalancerPort, nil)
+// }

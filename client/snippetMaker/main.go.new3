@@ -1,0 +1,903 @@
+package main
+
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"io/ioutil"
+	"log"
+	"net/http"
+	"os"
+	"runtime"
+	"sort"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/Knetic/govaluate"
+	"github.com/olekukonko/tablewriter"
+)
+
+type Snippet struct {
+	TableNames    []string               `json:"tableNames"`
+	TableSchema   map[string]TableSchema `json:"tableSchema"`
+	WhereClauses  []Where                `json:"whereClause"`
+	BlockOffset   int                    `json:"blockOffset"`
+	BufferAddress string                 `json:"bufferAddress"`
+}
+
+// type Select struct {
+// 	ColumnType     int    `json:"columnType"` // 1: (columnName), 2: (aggregateName,aggregateValue)
+// 	ColumnName     string `json:"columnName"`
+// 	AggregateName  string `json:"aggregateName"`
+// 	AggregateValue string `json:"aggregateValue"`
+// }
+
+type Where struct {
+	LeftValue  string `json:"leftValue"`
+	Exp        string `json:"exp"`
+	RightValue string `json:"rightValue"`
+	Operator   string `json:"operator"` // "AND": 뒤에 나오는 Where은 And조건, "OR": 뒤에 나오는 Where은 OR 조건, "NULL": 뒤에 나오는 조건 없음
+}
+
+type TableSchema struct {
+	ColumnNames []string `json:"columnNames"`
+	ColumnTypes []string `json:"columnTypes"` // int, char, varchar, TEXT, DATETIME,  ...
+	ColumnSizes []int    `json:"columnSizes"` // Data Size
+}
+
+type Response struct {
+	Code    int    `json:"code"`
+	Message string `json:"message"`
+	Data    Data   `json:"data"`
+}
+type Data struct {
+	// Table       string                         `json:"table"`
+	Field       []string                       `json:"field"`
+	Values      map[string][]map[string]string `json:"values"`
+	GroupNames  []string                       `json:"groupNames"`
+	SelectWords []SelectWord                   `json:"selectwords"`
+}
+type SelectWord struct {
+	Operator   string
+	Expression string
+	//Column     string
+	AsColumn string
+}
+
+func JSONMarshal(t interface{}) ([]byte, error) {
+	buffer := &bytes.Buffer{}
+	encoder := json.NewEncoder(buffer)
+	encoder.SetEscapeHTML(false)
+	err := encoder.Encode(t)
+	return buffer.Bytes(), err
+}
+
+func Marshal(i interface{}) ([]byte, error) {
+	buffer := &bytes.Buffer{}
+	encoder := json.NewEncoder(buffer)
+	encoder.SetEscapeHTML(false)
+	err := encoder.Encode(i)
+	return bytes.TrimRight(buffer.Bytes(), "\n"), err
+}
+
+func RequestSnippet(query string, SchedulerIP string, SchedulerPort string) {
+	select_str, from_str, where_str, group_by_str, having_str, order_by_str := Parse(query)
+
+	snippet, err := MakeSnippet(from_str, where_str)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
+	//json_snippet_byte, err := Marshal(snippet)
+	json_snippet_byte, err := json.MarshalIndent(snippet, "", "  ")
+	//json_snippet_byte, err := json.Marshal(snippet)
+	if err != nil {
+		//fmt.Println(err)
+		return
+	}
+	// 입력확인
+	//fmt.Println(string(json_snippet_byte))
+	snippet_buff := bytes.NewBuffer(json_snippet_byte)
+
+	startTime := time.Now()
+	req, err := http.NewRequest("GET", "http://"+SchedulerIP+":"+SchedulerPort, snippet_buff)
+
+	if err != nil {
+		//fmt.Println("httperr : ", err)
+	} else {
+		st := time.Now()
+		client := &http.Client{}
+		resp, errclient := client.Do(req)
+
+		if errclient != nil {
+			//fmt.Println("resperr : ", errclient)
+		} else {
+			defer resp.Body.Close()
+			log.Println("TIME CSD", time.Since(st).Seconds(), "SEC")
+			bytes, _ := ioutil.ReadAll(resp.Body)
+			jsonDataString := string(bytes)
+			// jsonDataString = `{
+			// 	"code": 200,
+			// 	"message": "OK",
+			// 	"data": {
+			// 	  "table": "",
+			// 	  "field": [
+			// 		"L_ORDERKEY",
+			// 		"L_PARTKEY",
+			// 		"L_SUPPKEY",
+			// 		"L_LINENUMBER",
+			// 		"L_QUANTITY",
+			// 		"L_EXTENDEDPRICE",
+			// 		"L_DISCOUNT",
+			// 		"L_TAX",
+			// 		"L_RETURNFLAG",
+			// 		"L_LINESTATUS",
+			// 		"L_SHIPDATE",
+			// 		"L_COMMITDATE",
+			// 		"L_RECEIPTDATE",
+			// 		"L_SHIPINSTRUCT",
+			// 		"L_SHIPMODE",
+			// 		"L_COMMENT"
+			// 	  ],
+			// 	  "values": {
+			// 		"": [
+			// 		  {
+			// 			"L_ORDERKEY": "1",
+			// 			"L_PARTKEY": "15519",
+			// 			"L_SUPPKEY": "785",
+			// 			"L_LINENUMBER": "1",
+			// 			"L_QUANTITY": "17",
+			// 			"L_EXTENDEDPRICE": "24386.67",
+			// 			"L_DISCOUNT": "0.04",
+			// 			"L_TAX": "0.02",
+			// 			"L_RETURNFLAG": "A",
+			// 			"L_LINESTATUS": "B",
+			// 			"L_SHIPDATE": "1996.3.13",
+			// 			"L_COMMITDATE": "1996.2.12",
+			// 			"L_RECEIPTDATE": "1996.3.22",
+			// 			"L_SHIPINSTRUCT": "DELIVER IN PERSON",
+			// 			"L_SHIPMODE": "TRUCK",
+			// 			"L_COMMENT": "egular courts above the"
+			// 		  },
+			// 		  {
+			// 			"L_ORDERKEY": "1",
+			// 			"L_PARTKEY": "15519",
+			// 			"L_SUPPKEY": "785",
+			// 			"L_LINENUMBER": "1",
+			// 			"L_QUANTITY": "17",
+			// 			"L_EXTENDEDPRICE": "24386.67",
+			// 			"L_DISCOUNT": "0.04",
+			// 			"L_TAX": "0.02",
+			// 			"L_RETURNFLAG": "D",
+			// 			"L_LINESTATUS": "D",
+			// 			"L_SHIPDATE": "1996.3.13",
+			// 			"L_COMMITDATE": "1996.2.12",
+			// 			"L_RECEIPTDATE": "1996.3.22",
+			// 			"L_SHIPINSTRUCT": "DELIVER IN PERSON",
+			// 			"L_SHIPMODE": "TRUCK",
+			// 			"L_COMMENT": "egular courts above the"
+			// 		  },
+			// 		  {
+			// 			"L_ORDERKEY": "1",
+			// 			"L_PARTKEY": "15519",
+			// 			"L_SUPPKEY": "785",
+			// 			"L_LINENUMBER": "1",
+			// 			"L_QUANTITY": "17",
+			// 			"L_EXTENDEDPRICE": "24386.67",
+			// 			"L_DISCOUNT": "0.04",
+			// 			"L_TAX": "0.02",
+			// 			"L_RETURNFLAG": "A",
+			// 			"L_LINESTATUS": "B",
+			// 			"L_SHIPDATE": "1996.3.13",
+			// 			"L_COMMITDATE": "1996.2.12",
+			// 			"L_RECEIPTDATE": "1996.3.22",
+			// 			"L_SHIPINSTRUCT": "DELIVER IN PERSON",
+			// 			"L_SHIPMODE": "TRUCK",
+			// 			"L_COMMENT": "egular courts above the"
+			// 		  }
+			// 		]
+			// 	  }
+			// 	}
+			//   }`
+
+			res := resJsonParser(jsonDataString)
+			if res.Code == 200 {
+				filltered_res := Fillter(res, select_str, group_by_str, having_str, order_by_str)
+				/*
+					Print Result Json Data
+				*/
+				// filltered_res_byte, _ := json.MarshalIndent(filltered_res, "", "  ")
+
+				// fmt.Println("\n[ Result ]")
+				// fmt.Println(string(filltered_res_byte))
+				/*
+					Print Result Json Data End
+				*/
+				printClient(filltered_res)
+
+			} else {
+				log.Fatal(res.Message)
+			}
+
+		}
+	}
+	endTime := time.Since(startTime).Seconds()
+	fmt.Printf("%0.1f sec\n", endTime)
+
+}
+func getTableSchema(tableName string) TableSchema {
+	// TODO 스키마 데이터 로드하는 형식으로 바꿔야함 (queryEngine or ddl)
+	schema := make(map[string]TableSchema)
+	schema["nation"] = TableSchema{
+		ColumnNames: []string{"N_NATIONKEY", "N_NAME", "N_REGIONKEY", "N_COMMENT"},
+		ColumnTypes: []string{"int", "char", "int", "char"}, // int, char, varchar, TEXT, DATETIME,  ...
+		ColumnSizes: []int{8, 25, 8, 152},                   // Data Size}
+	}
+	schema["region"] = TableSchema{
+		ColumnNames: []string{"R_REGIONKEY", "R_NAME", "R_COMMENT"},
+		ColumnTypes: []string{"int", "char", "varchar"}, // int, char, varchar, TEXT, DATETIME,  ...
+		ColumnSizes: []int{8, 8, 152},                   // Data Size}
+	}
+	schema["part"] = TableSchema{
+		ColumnNames: []string{"P_PARTKEY", "P_NAME", "P_MFGR", "P_BRAND", "P_TYPE", "P_SIZE", "P_CONTAINER", "P_RETAILPRICE", "P_COMMENT"},
+		ColumnTypes: []string{"int", "varchar", "char", "char", "varchar", "int", "char", "decimal(15,2)", "varchar"}, // int, char, varchar, TEXT, DATETIME,  ...
+		ColumnSizes: []int{8, 55, 25, 10, 25, 8, 10, 15, 101},                                                         // Data Size}
+	}
+	schema["supplier"] = TableSchema{
+		ColumnNames: []string{"S_SUPPKEY", "S_NAME", "S_ADDRESS", "S_NATIONKEY", "S_PHONE", "S_ACCTBAL", "S_COMMENT"},
+		ColumnTypes: []string{"int", "char", "varchar", "int", "char", "decimal(15,2)", "varchar"}, // int, char, varchar, TEXT, DATETIME,  ...
+		ColumnSizes: []int{8, 25, 40, 8, 15, 15, 101},                                              // Data Size}
+	}
+	schema["partsupp"] = TableSchema{
+		ColumnNames: []string{"PS_PARTKEY", "PS_SUPPKEY", "PS_AVAILQTY", "PS_SUPPLYCOST", "PS_COMMENT"},
+		ColumnTypes: []string{"int", "varchar", "varchar", "int", "char", "decimal(15,2)", "char", "varchar"}, // int, char, varchar, TEXT, DATETIME,  ...
+		//ColumnSizes: []int{110325, 110325, 110325, 110325},  // Data Size}
+		ColumnSizes: []int{8, 25, 40, 8, 15, 15, 10, 117}, // Data Size}
+	}
+	schema["customer"] = TableSchema{
+		ColumnNames: []string{"C_CUSTKEY", "C_NAME", "C_ADDRESS", "C_NATIONKEY", "C_PHONE", "C_ACCTBAL", "C_MKTSEGMENT", "C_COMMENT"},
+		ColumnTypes: []string{"int", "varchar", "varchar", "int", "char", "decimal(15,2)", "char", "varchar"}, // int, char, varchar, TEXT, DATETIME,  ...
+		ColumnSizes: []int{8, 25, 40, 8, 15, 15, 10, 117},                                                     // Data Size}
+	}
+	schema["orders"] = TableSchema{
+		ColumnNames: []string{"O_ORDERKEY", "O_CUSTKEY", "O_ORDERSTATUS", "O_TOTALPRICE", "O_ORDERDATE", "O_ORDERPRIORITY", "O_CLERK", "O_SHIPPRIORITY", "O_COMMENT"},
+		ColumnTypes: []string{"int", "int", "char", "decimal(15,2)", "date", "char", "char", "int", "varchar"}, // int, char, varchar, TEXT, DATETIME,  ...
+		ColumnSizes: []int{8, 8, 1, 15, -1, 15, 15, 8, 79},                                                     // Data Size}
+	}
+	schema["lineitem"] = TableSchema{
+		ColumnNames: []string{"L_ORDERKEY", "L_PARTKEY", "L_SUPPKEY", "L_LINENUMBER", "L_QUANTITY", "L_EXTENDEDPRICE", "L_DISCOUNT", "L_TAX", "L_RETURNFLAG", "L_LINESTATUS", "L_SHIPDATE", "L_COMMITDATE", "L_RECEIPTDATE", "L_SHIPINSTRUCT", "L_SHIPMODE", "L_COMMENT"},
+		ColumnTypes: []string{"int", "int", "int", "int", "decimal(15,2)", "decimal(15,2)", "decimal(15,2)", "decimal(15,2)", "char", "char", "date", "date", "date", "char", "char", "varchar"}, // int, char, varchar, TEXT, DATETIME,  ...
+		ColumnSizes: []int{8, 8, 8, 8, 15, 15, 15, 15, 1, 1, -1, -1, 25, 10, 44},                                                                                                                 // Data Size}
+	}
+
+	return schema[tableName]
+}
+func Parse(query string) (string, string, string, string, string, string) {
+	//query.replace(" ", ' ')
+	//log.Println(query)
+	query = strings.TrimSuffix(query, ";")
+	querySlice := strings.Split(query, " ")
+	select_str := ""
+	from_str := ""
+	where_str := ""
+	group_by_str := ""
+	having_str := ""
+	order_by_str := ""
+
+	index := ""
+	// whereSlice := make([]string, 3)
+	// operatorFlag := false
+
+	//flag := 0
+	groupby := false
+	orderby := false
+
+	for i, atom := range querySlice {
+		//fmt.Println(atom)
+		if strings.ToLower(atom) == "select" {
+			index = "select"
+			continue
+		} else if strings.ToLower(atom) == "from" {
+			index = "from"
+			//klog.Infoln("Current Index", index)
+			continue
+		} else if strings.ToLower(atom) == "where" {
+			index = "where"
+			continue
+		} else if strings.ToLower(atom) == "group" && strings.ToLower(querySlice[i+1]) == "by" {
+			groupby = true
+			index = "group by"
+			continue
+		} else if strings.ToLower(atom) == "having" {
+			index = "having"
+			continue
+		} else if strings.ToLower(atom) == "order" && strings.ToLower(querySlice[i+1]) == "by" {
+			orderby = true
+			index = "order by"
+			continue
+		} else if groupby || orderby {
+			groupby = false
+			orderby = false
+			continue
+
+		}
+
+		//fmt.Println(index)
+		switch index {
+		case "select":
+			select_str = select_str + " " + atom
+		case "from":
+			from_str = from_str + " " + atom
+		case "where":
+			where_str = where_str + " " + atom
+		case "group by":
+			group_by_str = group_by_str + " " + atom
+		case "having":
+			having_str = having_str + " " + atom
+		case "order by":
+			order_by_str = order_by_str + " " + atom
+		}
+
+	}
+
+	//fmt.Println("select_str:", select_str)
+	//fmt.Println("from_str:", from_str)
+	//fmt.Println("where_str:", where_str)
+	//fmt.Println("group_by_str:", group_by_str)
+	//fmt.Println("having_str:", having_str)
+	//fmt.Println("order_by_str:", order_by_str)
+	return select_str, from_str, where_str, group_by_str, having_str, order_by_str
+}
+
+func MakeSnippet(from_str, where_str string) (Snippet, error) {
+
+	snippet := Snippet{
+		TableNames:    make([]string, 0),
+		TableSchema:   make(map[string]TableSchema),
+		WhereClauses:  make([]Where, 0),
+		BlockOffset:   312476,      // TODO 바꿔야함
+		BufferAddress: "0x0847583", // TODO 바꿔야함
+	}
+
+	for _, tableName := range strings.Split(from_str, ",") {
+		tableName = strings.TrimSpace(tableName)
+		tableName = strings.ToLower(tableName)
+		snippet.TableNames = append(snippet.TableNames, tableName)
+
+		tableSchema := getTableSchema(tableName)
+		snippet.TableSchema[tableName] = tableSchema
+	}
+
+	operatorSequence := []string{}
+	condtionSequence := []string{}
+	where_str = strings.ToLower(where_str)
+
+	tmp := ""
+	for _, word := range strings.Split(where_str, " ") {
+		if word == "and" {
+			operatorSequence = append(operatorSequence, word)
+			condtionSequence = append(condtionSequence, tmp)
+			tmp = ""
+		} else if word == "or" {
+			operatorSequence = append(operatorSequence, word)
+			condtionSequence = append(condtionSequence, tmp)
+			tmp = ""
+		} else {
+			tmp = tmp + " " + word
+		}
+
+	}
+	condtionSequence = append(condtionSequence, tmp)
+
+	operatorSequence_index := 0
+
+	for _, cond := range condtionSequence {
+		//fmt.Println("cond:", cond)
+		for _, atom := range strings.Split(cond, " ") {
+			//fmt.Println("atom:", atom)
+			if ok, exp := isEXP(atom); ok {
+				whereSlice := strings.Split(cond, exp)
+				whereSlice[0] = strings.TrimSpace(whereSlice[0])
+				whereSlice[1] = strings.TrimSpace(whereSlice[1])
+				//fmt.Println("exp:", exp)
+				w := Where{
+					LeftValue:  whereSlice[0],
+					Exp:        exp,
+					RightValue: whereSlice[1],
+					Operator:   "NULL",
+				}
+				if operatorSequence_index < len(operatorSequence) {
+					w.Operator = operatorSequence[operatorSequence_index]
+					operatorSequence_index += 1
+				}
+				snippet.WhereClauses = append(snippet.WhereClauses, w)
+			}
+
+		}
+
+	}
+
+	//klog.Infoln(*request)
+	////fmt.Println("snippet:")
+
+	return snippet, nil
+}
+
+func do_group_by(res Response, group_by_str string) Response {
+
+	group_by_res := res
+	group_by_res.Data.Values = make(map[string][]map[string]string)
+
+	for _, atom := range strings.Split(group_by_str, ",") {
+		groupName := strings.TrimSpace(atom)
+		groupName = strings.ToUpper(groupName)
+		group_by_res.Data.GroupNames = append(group_by_res.Data.GroupNames, groupName)
+	}
+
+	if len(group_by_res.Data.GroupNames) == 0 {
+		return res
+	}
+
+	for _, group := range res.Data.Values {
+		for _, record := range group {
+			groupTotalName := ""
+			for _, groupName := range group_by_res.Data.GroupNames {
+				groupTotalName = groupTotalName + " " + record[groupName]
+			}
+
+			groupTotalName = strings.TrimLeft(groupTotalName, " ")
+			//fmt.Println("groupTotalName:", groupTotalName)
+
+			if _, ok := group_by_res.Data.Values[groupTotalName]; !ok {
+				group_by_res.Data.Values[groupTotalName] = make([]map[string]string, 0)
+			}
+			group_by_res.Data.Values[groupTotalName] = append(group_by_res.Data.Values[groupTotalName], record)
+		}
+	}
+
+	// //fmt.Println("group_by_res:", group_by_res)
+
+	return group_by_res
+}
+
+func do_select(res Response, select_str string) Response {
+
+	//selected_datas := [][]string{}
+
+	asColumns := []string{}
+	selected_res := res
+
+	selected_res.Data.SelectWords = make([]SelectWord, 0)
+
+	for _, atom := range strings.Split(select_str, ",") {
+		operator := ""
+		expression := ""
+		asColumn := ""
+		//column := ""
+
+		if strings.Contains(atom, " as ") {
+			index := strings.Index(atom, " as ")
+			aggregater := strings.TrimLeft(atom[:index], " ")
+
+			sp_aggregater := strings.Split(aggregater, "(")
+
+			if len(sp_aggregater) > 1 {
+				operator = sp_aggregater[0]
+				index2 := strings.Index(aggregater, operator) + len(operator)
+				expression = aggregater[index2:]
+				//column = ""
+			} else {
+				operator = ""
+				expression = ""
+				//column = strings.TrimSpace(atom[:index])
+			}
+
+			asColumn = strings.TrimSpace(atom[index+4:])
+
+		} else {
+			aggregater := strings.TrimLeft(atom, " ")
+			sp_aggregater := strings.Split(aggregater, "(")
+
+			if len(sp_aggregater) > 1 {
+				operator = sp_aggregater[0]
+				index2 := strings.Index(aggregater, operator) + len(operator)
+				expression = aggregater[index2:]
+			} else {
+				operator = ""
+				expression = ""
+			}
+
+			asColumn = strings.TrimSpace(atom)
+
+		}
+		asColumns = append(asColumns, asColumn)
+
+		sw := SelectWord{
+			Operator:   operator,
+			Expression: expression,
+			//Column:     column,
+			AsColumn: asColumn,
+		}
+		selected_res.Data.SelectWords = append(selected_res.Data.SelectWords, sw)
+
+		//fmt.Println("operator: "+operator, "/ expression: "+expression, "/ asColumn: "+asColumn)
+
+	}
+
+	selected_res.Data.Field = asColumns
+
+	if res.Data.GroupNames[0] == "" {
+		return selected_res
+	}
+
+	selected_res.Data.Values = make(map[string][]map[string]string)
+	for k, _ := range res.Data.Values {
+		selected_res.Data.Values[k] = make([]map[string]string, 0)
+	}
+
+	//log.Println("len: ", len(res.Data.Values))
+
+	var wg sync.WaitGroup
+	chGroupName := make(chan string, len(res.Data.Values))
+	chData := make(chan map[string]string, len(res.Data.Values))
+
+	for groupName, groupDatas := range res.Data.Values {
+
+		go func(groupName string, groupDatas []map[string]string, chGroupName chan string, chData chan map[string]string) {
+			defer wg.Done()
+			wg.Add(1)
+
+			GDataMap := make(map[string]string)
+
+			var wg2 sync.WaitGroup
+			ch2 := make(chan map[string]string, len(groupDatas))
+			for _, groupData := range groupDatas {
+
+				go func(groupData map[string]string, ch2 chan map[string]string) {
+					defer wg2.Done()
+					wg2.Add(1)
+					//log.Println("Go Routine")
+
+					tmpGDataMap := make(map[string]string)
+
+					parameters := make(map[string]interface{}, 8)
+					for k, v := range groupData {
+						//fmt.Println("v :", strings.ToLower(k), v)
+
+						if f, err := strconv.ParseFloat(v, 64); err == nil {
+							parameters[strings.ToLower(k)] = f
+						} else if f, err := strconv.Atoi(v); err == nil {
+							parameters[strings.ToLower(k)] = f
+						} else {
+							parameters[strings.ToLower(k)] = v
+						}
+					}
+					for _, selectword := range selected_res.Data.SelectWords {
+						if selectword.Operator == "" && selectword.Expression == "" {
+
+							tmpGDataMap[strings.ToUpper(selectword.AsColumn)] = groupData[strings.ToUpper(selectword.AsColumn)]
+
+						} else {
+							var result interface{}
+
+							//fmt.Println("[selectword.Expression]", selectword.Expression)
+							if selectword.Expression == "(*)" {
+								result = 1
+							} else {
+								expression, err := govaluate.NewEvaluableExpression(selectword.Expression)
+								if err != nil {
+									//fmt.Println(err)
+								}
+								result, err = expression.Evaluate(parameters)
+								if err != nil {
+									//fmt.Println(err)
+								}
+								//fmt.Println("result:", result)
+							}
+
+							res_str := fmt.Sprintf("%v", result)
+							//fmt.Println("res_str:", res_str)
+
+							tmpGDataMap[strings.ToUpper(selectword.AsColumn)] = res_str
+
+						}
+					}
+					ch2 <- tmpGDataMap
+				}(groupData, ch2)
+
+			}
+
+			wg2.Wait() // 모든 고루틴이 종료될 때까지 대기
+			//log.Println("Go Routine End")
+			for i := 0; i < len(groupDatas); i++ {
+				tmpGDataMap := <-ch2
+				//fmt.Println(tmpGDataMap)
+				for _, selectword := range selected_res.Data.SelectWords {
+					//fmt.Println("**", selectword.AsColumn, tmpGDataMap[strings.ToUpper(selectword.AsColumn)])
+					//fmt.Println("*** dataMap: ", dataMap)
+					if _, ok := GDataMap[strings.ToUpper(selectword.AsColumn)]; !ok {
+						GDataMap[strings.ToUpper(selectword.AsColumn)] = tmpGDataMap[strings.ToUpper(selectword.AsColumn)]
+						//fmt.Println("**** dataMap: ", dataMap)
+					} else {
+						if selectword.Operator == "" && selectword.Expression == "" {
+							continue
+						}
+
+						f1, err := strconv.ParseFloat(GDataMap[strings.ToUpper(selectword.AsColumn)], 64)
+						if err != nil {
+							log.Println("error:", err)
+						}
+						f2, err := strconv.ParseFloat(tmpGDataMap[strings.ToUpper(selectword.AsColumn)], 64)
+						if err != nil {
+							log.Println("error:", err)
+						}
+
+						total_res_str := ""
+						if selectword.Operator == "sum" {
+							f := f1 + f2
+							total_res_str = strconv.FormatFloat(f, 'f', 5, 64)
+						} else if selectword.Operator == "avg" {
+							f := f1 + f2
+							total_res_str = strconv.FormatFloat(f, 'f', 5, 64)
+						} else if selectword.Operator == "count" {
+							f := f1 + f2 // count 인경우 1이기때문에 더하기
+							total_res_str = strconv.FormatFloat(f, 'f', 5, 64)
+						}
+						GDataMap[strings.ToUpper(selectword.AsColumn)] = total_res_str
+					}
+					// log.Println("GDataMap:", GDataMap)
+
+				}
+			}
+			//fmt.Println("ee", dataMap)
+
+			for _, selectword := range selected_res.Data.SelectWords {
+				if selectword.Operator == "avg" {
+					tmp := GDataMap[strings.ToUpper(selectword.AsColumn)]
+					f1, err := strconv.ParseFloat(tmp, 64)
+					if err != nil {
+						log.Println("error:", err)
+					}
+					f := f1 / float64(len(groupDatas))
+					total_res_str := strconv.FormatFloat(f, 'f', 5, 64)
+
+					GDataMap[strings.ToUpper(selectword.AsColumn)] = total_res_str
+
+				}
+
+			}
+			//fmt.Println("ee2")
+
+			//selected_res.Data.Values[groupName] = append(selected_res.Data.Values[groupName], GDataMap)
+			chGroupName <- groupName
+			chData <- GDataMap
+
+		}(groupName, groupDatas, chGroupName, chData)
+
+	}
+	wg.Wait() // 모든 고루틴이 종료될 때까지 대기
+
+	startTime := time.Now()
+	for i := 0; i < len(res.Data.Values); i++ {
+		groupName := <-chGroupName
+		GDataMap := <-chData
+
+		selected_res.Data.Values[groupName] = append(selected_res.Data.Values[groupName], GDataMap)
+	}
+	endTime := time.Since(startTime).Seconds()
+	fmt.Printf("select detail1: %0.1f sec\n", endTime)
+
+	//fmt.Println(selected_res.Data.Values)
+
+	// for _, group := range res.Data.Values {
+	// 	for _, record := range group {
+	// 		groupTotalName := ""
+	// 		for _, groupName := range group_by_res.Data.GroupNames {
+	// 		}
+	// 	}
+	// }
+
+	//fmt.Println("fields:", asColumns)
+
+	return selected_res
+}
+func do_order_by(res Response, order_by_str string) Response {
+
+	order_by_res := res
+	order_by_res.Data.Values = make(map[string][]map[string]string)
+
+	// order by
+	mapDatas := make([]map[string]string, 0)
+	for _, groupDatas := range res.Data.Values {
+		mapDatas = append(mapDatas, groupDatas...)
+	}
+
+	s := strings.Split(order_by_str, ",")
+
+	for k, _ := range s {
+		k = len(s) - 1 - k
+		atom := s[k]
+
+		order := "ASC"
+		colName := ""
+		atom = strings.TrimSpace(atom)
+
+		if strings.Contains(strings.ToUpper(atom), " DESC") || strings.Contains(strings.ToUpper(atom), " ASC") {
+			index := strings.Index(atom, " ")
+
+			colName = atom[:index]
+			colName = strings.ToUpper(colName)
+			order = strings.ToUpper(atom[index+1:])
+
+		} else {
+			colName = strings.ToUpper(atom)
+		}
+		// fmt.Println("order:", order)
+		// fmt.Println("colName:", colName)
+
+		if order == "ASC" {
+			sort.Slice(mapDatas, func(i, j int) bool { return mapDatas[i][colName] < mapDatas[j][colName] }) // 오름차순
+		} else if order == "DESC" {
+			sort.Slice(mapDatas, func(i, j int) bool { return mapDatas[i][colName] > mapDatas[j][colName] }) // 내림차순
+		}
+
+	}
+
+	//fmt.Println("mapData:", mapDatas)
+
+	order_by_res.Data.Values[""] = mapDatas
+
+	return order_by_res
+
+}
+func do_convert_data(res Response) Response {
+	// tableName := res.Data.Table
+	// schema := getTableSchema(tableName)
+
+	// for _, group := range res.Data.Values {
+	// 	for _, record := range group {
+	// 		for k, v := range record {
+	// 			schema.ColumnNames
+	// 		}
+	// 	}
+	// }
+	// schema.ColumnNames
+	return res
+
+}
+func Fillter(res Response, select_str, group_by_str, having_str, order_by_str string) Response {
+
+	// res_byte, _ := json.MarshalIndent(res, "", "  ")
+
+	// fmt.Println("\n[ res_byte ]")
+	// fmt.Println(string(res_byte))
+
+	// res = do_convert_data(res)
+
+	startTime := time.Now()
+
+	res = do_group_by(res, group_by_str)
+
+	endTime := time.Since(startTime).Seconds()
+	fmt.Printf("do_group_by: %0.1f sec\n", endTime)
+
+	startTime = time.Now()
+
+	res = do_select(res, select_str)
+
+	endTime = time.Since(startTime).Seconds()
+	fmt.Printf("do_select: %0.1f sec\n", endTime)
+
+	// res = do_having(res, having_str)
+
+	startTime = time.Now()
+
+	res = do_order_by(res, order_by_str)
+
+	endTime = time.Since(startTime).Seconds()
+	fmt.Printf("do_order_by: %0.1f sec\n", endTime)
+
+	return res
+}
+func isIntegral(val float64) bool {
+	return val == float64(int(val))
+}
+func SplitAny(s string, seps string) []string {
+	splitter := func(r rune) bool {
+		return strings.ContainsRune(seps, r)
+	}
+	return strings.FieldsFunc(s, splitter)
+}
+
+func resJsonParser(jsonDataString string) Response {
+	var res Response
+
+	jsonDataString = strings.Replace(jsonDataString, "No Servers Available", "", -1)
+
+	if err := json.Unmarshal([]byte(jsonDataString), &res); err != nil {
+		log.Fatal(err)
+	}
+
+	return res
+}
+
+func isAggregateFunc(atom string) (bool, string) {
+	aggregateList := []string{"count", "sum", "avg", "max", "min"}
+	for _, aggregater := range aggregateList {
+		if strings.Contains(atom, aggregater+"(") {
+			return true, aggregater
+		}
+	}
+	return false, ""
+}
+func isOperator(atom string) (bool, string) {
+	opList := []string{"and", "or"}
+	for _, op := range opList {
+		atom = strings.ToLower(atom)
+		if atom == op {
+			return true, op
+		}
+	}
+	return false, ""
+}
+func isEXP(atom string) (bool, string) {
+	expList := []string{">=", "<=", ">", "<", "="}
+	for _, exp := range expList {
+		if strings.Contains(atom, exp) {
+			return true, exp
+		}
+	}
+	return false, ""
+}
+
+func printClient(res Response) {
+	datas := [][]string{}
+	//fields := []string{}
+
+	for _, groupDatas := range res.Data.Values {
+
+		for _, groupData := range groupDatas {
+			data := []string{}
+			for _, field := range res.Data.Field {
+				data = append(data, string(groupData[strings.ToUpper(field)]))
+			}
+			datas = append(datas, data)
+		}
+
+	}
+
+	//fmt.Println("datas:", datas)
+	//fmt.Println()
+
+	table := tablewriter.NewWriter(os.Stdout)
+
+	table.SetHeader(res.Data.Field)
+	table.SetBorder(true)
+	table.SetAutoFormatHeaders(false)
+	table.SetCaption(true, "Total: "+strconv.Itoa(len(datas)))
+	table.AppendBulk(datas)
+	table.Render()
+
+}
+
+func main() {
+	runtime.GOMAXPROCS(runtime.NumCPU())
+	log.SetFlags(log.Lshortfile)
+	SchedulerIP := "10.0.5.101"
+	SchedulerPort := "8100"
+
+	// SchedulerIP := "www.naver.com"
+	// SchedulerPort := "80"
+
+	// query := "SELECT emp_no, first_name FROM employees WHERE hire_date>=\"1999-12-23\""
+	// query := "SELECT sum(C_CUSTKEY) FROM customer WHERE C_NAME='a' and C_CUSTKEY='1' and C_CUSTKEY='2' and C_CUSTKEY='3'"
+	//query := "SELECT C_NAME, C_ADDRESS, C_PHONE, C_CUSTKEY FROM customer WHERE C_CUSTKEY=525"
+	// query := "SELECT C_CUSTKEY FROM customer"
+	query := "select l_returnflag, l_linestatus, sum(l_quantity) as sum_qty, sum(l_extendedprice) as sum_base_price, sum(l_extendedprice * (1 - l_discount)) as sum_disc_price, sum(l_extendedprice * (1 - l_discount) * (1 + l_tax)) as sum_charge, avg(l_quantity) as avg_qty, avg(l_extendedprice) as avg_price, avg(l_discount) as avg_disc, count(*) as count_order from LINEITEM where l_shipdate <= date '1998-12-01' - interval '108' day group by l_returnflag, l_linestatus order by l_returnflag, l_linestatus;"
+	//query := "select l_returnflag, l_linestatus, L_ORDERKEY, L_PARTKEY, L_SUPPKEY, L_LINENUMBER, L_QUANTITY, L_EXTENDEDPRICE, L_DISCOUNT, L_TAX, L_SHIPDATE, L_COMMITDATE from lineitem where l_shipdate <= date '1998-12-01' - interval '108' day order by l_returnflag, l_linestatus;"
+	//query := "select l_returnflag, l_linestatus,L_TAX, L_SHIPDATE, L_COMMITDATE from lineitem where l_shipdate <= date '1818-12-01' - interval '108' day;"
+	RequestSnippet(query, SchedulerIP, SchedulerPort)
+}

@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -17,15 +16,11 @@ import (
 
 	"github.com/Knetic/govaluate"
 	"github.com/olekukonko/tablewriter"
+
+	jsoniter "github.com/json-iterator/go"
 )
 
-type Snippet struct {
-	TableNames    []string               `json:"tableNames"`
-	TableSchema   map[string]TableSchema `json:"tableSchema"`
-	WhereClauses  []Where                `json:"whereClause"`
-	BlockOffset   int                    `json:"blockOffset"`
-	BufferAddress string                 `json:"bufferAddress"`
-}
+var json = jsoniter.ConfigCompatibleWithStandardLibrary
 
 // type Select struct {
 // 	ColumnType     int    `json:"columnType"` // 1: (columnName), 2: (aggregateName,aggregateValue)
@@ -34,17 +29,35 @@ type Snippet struct {
 // 	AggregateValue string `json:"aggregateValue"`
 // }
 
+type Snippet struct {
+	TableNames    []string               `json:"tableNames"`
+	TableSchema   map[string]TableSchema `json:"tableSchema"`
+	WhereClauses  []Where                `json:"whereClause"`
+	BlockOffset   int                    `json:"blockOffset"`
+	BufferAddress string                 `json:"bufferAddress"`
+	CsdInfos      CsdInfos               `json:"csdInfos"`
+}
+
 type Where struct {
-	LeftValue  string `json:"leftValue"`
-	Exp        string `json:"exp"`
-	RightValue string `json:"rightValue"`
-	Operator   string `json:"operator"` // "AND": 뒤에 나오는 Where은 And조건, "OR": 뒤에 나오는 Where은 OR 조건, "NULL": 뒤에 나오는 조건 없음
+	LeftValue       string `json:"leftValue"`
+	CompOperator    string `json:"compOperator"`
+	RightValue      string `json:"rightValue"`
+	LogicalOperator string `json:"logicalOperator"`
 }
 
 type TableSchema struct {
 	ColumnNames []string `json:"columnNames"`
-	ColumnTypes []string `json:"columnTypes"` // int, char, varchar, TEXT, DATETIME,  ...
-	ColumnSizes []int    `json:"columnSizes"` // Data Size
+	ColumnTypes []string `json:"columnTypes"`
+	ColumnSizes []int    `json:"columnSizes"`
+}
+type CsdInfos struct {
+	NodeTotal int    `json:"nodeTotal"`
+	CsdTotal  int    `json:"csdTotal"`
+	Items     []Item `json:"items"`
+}
+type Item struct {
+	Node int            `json:"node"`
+	Csd  map[string]int `json:"csd"`
 }
 
 type Response struct {
@@ -52,18 +65,24 @@ type Response struct {
 	Message string `json:"message"`
 	Data    Data   `json:"data"`
 }
+
 type Data struct {
 	// Table       string                         `json:"table"`
-	Field       []string                       `json:"field"`
-	Values      map[string][]map[string]string `json:"values"`
-	GroupNames  []string                       `json:"groupNames"`
-	SelectWords []SelectWord                   `json:"selectwords"`
+	Field         []string                       `json:"field"`
+	Values        map[string][]map[string]string `json:"values"`
+	GroupNames    []string                       `json:"groupNames"`
+	NumOfGroupMap map[string]int                 `json:"NumOfGroupMap"`
+	SelectWords   []SelectWord                   `json:"selectwords"`
 }
 type SelectWord struct {
 	Operator   string
 	Expression string
 	//Column     string
 	AsColumn string
+}
+type GData struct {
+	GroupName string
+	DataMap   map[string]string
 }
 
 func JSONMarshal(t interface{}) ([]byte, error) {
@@ -83,7 +102,17 @@ func Marshal(i interface{}) ([]byte, error) {
 }
 
 func RequestSnippet(query string, SchedulerIP string, SchedulerPort string) {
+	///////////////////////////
+	startTime := time.Now()
+
 	select_str, from_str, where_str, group_by_str, having_str, order_by_str := Parse(query)
+
+	endTime := time.Since(startTime).Seconds()
+	fmt.Printf("Parse : %0.1f sec\n", endTime)
+	///////////////////////////
+
+	///////////////////////////
+	sectionStartTime := time.Now()
 
 	snippet, err := MakeSnippet(from_str, where_str)
 	if err != nil {
@@ -91,32 +120,47 @@ func RequestSnippet(query string, SchedulerIP string, SchedulerPort string) {
 		return
 	}
 
-	//json_snippet_byte, err := Marshal(snippet)
+	endTime = time.Since(sectionStartTime).Seconds()
+	fmt.Printf("MakeSnippet : %0.1f sec\n", endTime)
+	///////////////////////////
+
+	///////////////////////////
+	sectionStartTime = time.Now()
+
 	json_snippet_byte, err := json.MarshalIndent(snippet, "", "  ")
-	//json_snippet_byte, err := json.Marshal(snippet)
+
+	endTime = time.Since(sectionStartTime).Seconds()
+	fmt.Printf("Marshal (Struct to []Byte) : %0.1f sec\n", endTime)
+
 	if err != nil {
 		//fmt.Println(err)
 		return
 	}
+	///////////////////////////
+
 	// 입력확인
-	//fmt.Println(string(json_snippet_byte))
+	fmt.Println(string(json_snippet_byte))
 	snippet_buff := bytes.NewBuffer(json_snippet_byte)
 
-	startTime := time.Now()
 	req, err := http.NewRequest("GET", "http://"+SchedulerIP+":"+SchedulerPort, snippet_buff)
 
 	if err != nil {
 		//fmt.Println("httperr : ", err)
 	} else {
-		st := time.Now()
+
+		sectionStartTime := time.Now()
+
 		client := &http.Client{}
 		resp, errclient := client.Do(req)
+
+		endTime := time.Since(sectionStartTime).Seconds()
+		fmt.Printf("Fillter in CSD : %0.1f sec\n", endTime)
 
 		if errclient != nil {
 			//fmt.Println("resperr : ", errclient)
 		} else {
 			defer resp.Body.Close()
-			log.Println("TIME CSD", time.Since(st).Seconds(), "SEC")
+
 			bytes, _ := ioutil.ReadAll(resp.Body)
 			jsonDataString := string(bytes)
 			// jsonDataString = `{
@@ -224,8 +268,8 @@ func RequestSnippet(query string, SchedulerIP string, SchedulerPort string) {
 
 		}
 	}
-	endTime := time.Since(startTime).Seconds()
-	fmt.Printf("%0.1f sec\n", endTime)
+	endTime = time.Since(startTime).Seconds()
+	fmt.Printf("Total : %0.1f sec\n", endTime)
 
 }
 func getTableSchema(tableName string) TableSchema {
@@ -352,19 +396,104 @@ func Parse(query string) (string, string, string, string, string, string) {
 	return select_str, from_str, where_str, group_by_str, having_str, order_by_str
 }
 
+type CSDDaemon struct {
+	NodeNum    int
+	CSDNum     int
+	isAvailble bool
+}
+
+func getCSDInfos() CsdInfos {
+
+	CSDDaemons := []CSDDaemon{
+		{
+			NodeNum:    1,
+			CSDNum:     1,
+			isAvailble: true,
+		},
+		{
+			NodeNum:    2,
+			CSDNum:     2,
+			isAvailble: true,
+		},
+		// {
+		// 	NodeNum:    2,
+		// 	CSDNum:     3,
+		// 	isAvailble: false,
+		// },
+		// {
+		// 	NodeNum:    2,
+		// 	CSDNum:     4,
+		// 	isAvailble: true,
+		// },
+	}
+
+	nodeTotal := 0
+	csdTotal := 0
+
+	nodeTotalMap := make(map[int]bool)
+	items := []Item{}
+	cnt := 0
+
+	csdSeqMap := make(map[string]map[string]int)
+	for _, cd := range CSDDaemons {
+		if _, val := nodeTotalMap[cd.NodeNum]; !val {
+			nodeTotalMap[cd.NodeNum] = val
+			nodeTotal += 1
+
+			csdSeqMap[strconv.Itoa(cd.NodeNum)] = make(map[string]int)
+		}
+		if cd.isAvailble {
+			csdTotal += 1
+		}
+
+		if cd.isAvailble {
+			csdSeqMap[strconv.Itoa(cd.NodeNum)][strconv.Itoa(cd.CSDNum)] = cnt
+			cnt += 1
+
+		}
+
+	}
+	for nodeNum, _ := range csdSeqMap {
+
+		n, _ := strconv.Atoi(nodeNum)
+
+		item := Item{
+			Node: n,
+			Csd:  csdSeqMap[nodeNum],
+		}
+		items = append(items, item)
+
+	}
+
+	cs := CsdInfos{
+		NodeTotal: nodeTotal,
+		CsdTotal:  csdTotal,
+		Items:     items,
+	}
+	return cs
+}
+func getBlockOffset(from_str, where_str string) int {
+	s := 312476
+	return s
+}
+
+func getBufferAddress() string {
+	s := "0x0847583"
+	return s
+}
 func MakeSnippet(from_str, where_str string) (Snippet, error) {
 
 	snippet := Snippet{
 		TableNames:    make([]string, 0),
 		TableSchema:   make(map[string]TableSchema),
 		WhereClauses:  make([]Where, 0),
-		BlockOffset:   312476,      // TODO 바꿔야함
-		BufferAddress: "0x0847583", // TODO 바꿔야함
+		BlockOffset:   getBlockOffset(from_str, where_str),
+		BufferAddress: getBufferAddress(),
+		CsdInfos:      getCSDInfos(),
 	}
 
 	for _, tableName := range strings.Split(from_str, ",") {
 		tableName = strings.TrimSpace(tableName)
-		tableName = strings.ToLower(tableName)
 		snippet.TableNames = append(snippet.TableNames, tableName)
 
 		tableSchema := getTableSchema(tableName)
@@ -404,13 +533,13 @@ func MakeSnippet(from_str, where_str string) (Snippet, error) {
 				whereSlice[1] = strings.TrimSpace(whereSlice[1])
 				//fmt.Println("exp:", exp)
 				w := Where{
-					LeftValue:  whereSlice[0],
-					Exp:        exp,
-					RightValue: whereSlice[1],
-					Operator:   "NULL",
+					LeftValue:       whereSlice[0],
+					CompOperator:    exp,
+					RightValue:      whereSlice[1],
+					LogicalOperator: "NULL",
 				}
 				if operatorSequence_index < len(operatorSequence) {
-					w.Operator = operatorSequence[operatorSequence_index]
+					w.LogicalOperator = operatorSequence[operatorSequence_index]
 					operatorSequence_index += 1
 				}
 				snippet.WhereClauses = append(snippet.WhereClauses, w)
@@ -449,15 +578,35 @@ func do_group_by(res Response, group_by_str string) Response {
 			}
 
 			groupTotalName = strings.TrimLeft(groupTotalName, " ")
-			//fmt.Println("groupTotalName:", groupTotalName)
 
 			if _, ok := group_by_res.Data.Values[groupTotalName]; !ok {
 				group_by_res.Data.Values[groupTotalName] = make([]map[string]string, 0)
 			}
 			group_by_res.Data.Values[groupTotalName] = append(group_by_res.Data.Values[groupTotalName], record)
 		}
+
 	}
 
+	group_by_res.Data.NumOfGroupMap = make(map[string]int)
+
+	for k := range group_by_res.Data.Values {
+		groupTotalName := k
+
+		numOfGroupMap := len(group_by_res.Data.Values[groupTotalName])
+		group_by_res.Data.NumOfGroupMap[groupTotalName] = numOfGroupMap
+		// fmt.Println("*************")
+		// fmt.Println(groupTotalName)
+		// fmt.Println(numOfGroupMap)
+	}
+
+	// for _, groupTotalName := range group_by_res.Data.GroupNames {
+	// 	group_by_res.Data.NumOfGroupMap = make(map[string]int)
+	// 	numOfGroupMap := len(group_by_res.Data.Values[groupTotalName])
+	// 	group_by_res.Data.NumOfGroupMap[groupTotalName] = numOfGroupMap
+	// 	fmt.Println("*************")
+	// 	fmt.Println(groupTotalName)
+	// 	fmt.Println(group_by_res.Data.Values[groupTotalName], numOfGroupMap)
+	// }
 	// //fmt.Println("group_by_res:", group_by_res)
 
 	return group_by_res
@@ -534,161 +683,187 @@ func do_select(res Response, select_str string) Response {
 	}
 
 	selected_res.Data.Values = make(map[string][]map[string]string)
-	for k, _ := range res.Data.Values {
-		selected_res.Data.Values[k] = make([]map[string]string, 0)
+	for k := range res.Data.Values {
+		selected_res.Data.Values[k] = make([]map[string]string, 1)
+
 	}
 
 	//log.Println("len: ", len(res.Data.Values))
 
 	var wg sync.WaitGroup
-	chGroupName := make(chan string, len(res.Data.Values))
-	chData := make(chan map[string]string, len(res.Data.Values))
+	// chGroupName := make(chan string, len(res.Data.Values))
+	// chData := make(chan map[string]string, len(res.Data.Values))
+
+	numRecord := 0
+	for groupName := range res.Data.Values {
+		numRecord += res.Data.NumOfGroupMap[groupName]
+	}
+	wg.Add(numRecord)
+
+	ch2 := make(chan GData, numRecord)
 
 	for groupName, groupDatas := range res.Data.Values {
 
-		go func(groupName string, groupDatas []map[string]string, chGroupName chan string, chData chan map[string]string) {
-			defer wg.Done()
-			wg.Add(1)
+		for _, groupData := range groupDatas {
 
-			GDataMap := make(map[string]string)
+			go func(groupName string, groupData map[string]string, ch2 chan GData) {
+				defer wg.Done()
 
-			var wg2 sync.WaitGroup
-			ch2 := make(chan map[string]string, len(groupDatas))
-			for _, groupData := range groupDatas {
+				//log.Println("Go Routine")
 
-				go func(groupData map[string]string, ch2 chan map[string]string) {
-					defer wg2.Done()
-					wg2.Add(1)
-					//log.Println("Go Routine")
+				tmpGDataMap := make(map[string]string)
 
-					tmpGDataMap := make(map[string]string)
+				parameters := make(map[string]interface{}, 8)
+				for k, v := range groupData {
+					//fmt.Println("v :", strings.ToLower(k), v)
 
-					parameters := make(map[string]interface{}, 8)
-					for k, v := range groupData {
-						//fmt.Println("v :", strings.ToLower(k), v)
-
-						if f, err := strconv.ParseFloat(v, 64); err == nil {
-							parameters[strings.ToLower(k)] = f
-						} else if f, err := strconv.Atoi(v); err == nil {
-							parameters[strings.ToLower(k)] = f
-						} else {
-							parameters[strings.ToLower(k)] = v
-						}
-					}
-					for _, selectword := range selected_res.Data.SelectWords {
-						if selectword.Operator == "" && selectword.Expression == "" {
-
-							tmpGDataMap[strings.ToUpper(selectword.AsColumn)] = groupData[strings.ToUpper(selectword.AsColumn)]
-
-						} else {
-							var result interface{}
-
-							//fmt.Println("[selectword.Expression]", selectword.Expression)
-							if selectword.Expression == "(*)" {
-								result = 1
-							} else {
-								expression, err := govaluate.NewEvaluableExpression(selectword.Expression)
-								if err != nil {
-									//fmt.Println(err)
-								}
-								result, err = expression.Evaluate(parameters)
-								if err != nil {
-									//fmt.Println(err)
-								}
-								//fmt.Println("result:", result)
-							}
-
-							res_str := fmt.Sprintf("%v", result)
-							//fmt.Println("res_str:", res_str)
-
-							tmpGDataMap[strings.ToUpper(selectword.AsColumn)] = res_str
-
-						}
-					}
-					ch2 <- tmpGDataMap
-				}(groupData, ch2)
-
-			}
-
-			wg2.Wait() // 모든 고루틴이 종료될 때까지 대기
-			//log.Println("Go Routine End")
-			for i := 0; i < len(groupDatas); i++ {
-				tmpGDataMap := <-ch2
-				//fmt.Println(tmpGDataMap)
-				for _, selectword := range selected_res.Data.SelectWords {
-					//fmt.Println("**", selectword.AsColumn, tmpGDataMap[strings.ToUpper(selectword.AsColumn)])
-					//fmt.Println("*** dataMap: ", dataMap)
-					if _, ok := GDataMap[strings.ToUpper(selectword.AsColumn)]; !ok {
-						GDataMap[strings.ToUpper(selectword.AsColumn)] = tmpGDataMap[strings.ToUpper(selectword.AsColumn)]
-						//fmt.Println("**** dataMap: ", dataMap)
+					if f, err := strconv.ParseFloat(v, 64); err == nil {
+						parameters[strings.ToLower(k)] = f
+					} else if f, err := strconv.Atoi(v); err == nil {
+						parameters[strings.ToLower(k)] = f
 					} else {
-						if selectword.Operator == "" && selectword.Expression == "" {
-							continue
-						}
-
-						f1, err := strconv.ParseFloat(GDataMap[strings.ToUpper(selectword.AsColumn)], 64)
-						if err != nil {
-							log.Println("error:", err)
-						}
-						f2, err := strconv.ParseFloat(tmpGDataMap[strings.ToUpper(selectword.AsColumn)], 64)
-						if err != nil {
-							log.Println("error:", err)
-						}
-
-						total_res_str := ""
-						if selectword.Operator == "sum" {
-							f := f1 + f2
-							total_res_str = strconv.FormatFloat(f, 'f', 5, 64)
-						} else if selectword.Operator == "avg" {
-							f := f1 + f2
-							total_res_str = strconv.FormatFloat(f, 'f', 5, 64)
-						} else if selectword.Operator == "count" {
-							f := f1 + f2 // count 인경우 1이기때문에 더하기
-							total_res_str = strconv.FormatFloat(f, 'f', 5, 64)
-						}
-						GDataMap[strings.ToUpper(selectword.AsColumn)] = total_res_str
+						parameters[strings.ToLower(k)] = v
 					}
-					// log.Println("GDataMap:", GDataMap)
-
 				}
-			}
-			//fmt.Println("ee", dataMap)
+				for _, selectword := range selected_res.Data.SelectWords {
+					if selectword.Operator == "" && selectword.Expression == "" {
 
-			for _, selectword := range selected_res.Data.SelectWords {
-				if selectword.Operator == "avg" {
-					tmp := GDataMap[strings.ToUpper(selectword.AsColumn)]
-					f1, err := strconv.ParseFloat(tmp, 64)
-					if err != nil {
-						log.Println("error:", err)
+						tmpGDataMap[strings.ToUpper(selectword.AsColumn)] = groupData[strings.ToUpper(selectword.AsColumn)]
+
+					} else {
+						var result interface{}
+
+						//fmt.Println("[selectword.Expression]", selectword.Expression)
+						if selectword.Expression == "(*)" {
+							result = 1
+						} else {
+							expression, err := govaluate.NewEvaluableExpression(selectword.Expression)
+							if err != nil {
+								//fmt.Println(err)
+							}
+							result, err = expression.Evaluate(parameters)
+							if err != nil {
+								//fmt.Println(err)
+							}
+							//fmt.Println("result:", result)
+						}
+
+						res_str := fmt.Sprintf("%v", result)
+						//fmt.Println("res_str:", res_str)
+
+						tmpGDataMap[strings.ToUpper(selectword.AsColumn)] = res_str
+
 					}
-					f := f1 / float64(len(groupDatas))
-					total_res_str := strconv.FormatFloat(f, 'f', 5, 64)
-
-					GDataMap[strings.ToUpper(selectword.AsColumn)] = total_res_str
-
+				}
+				gData := GData{
+					GroupName: groupName,
+					DataMap:   tmpGDataMap,
 				}
 
-			}
-			//fmt.Println("ee2")
+				ch2 <- gData
 
-			//selected_res.Data.Values[groupName] = append(selected_res.Data.Values[groupName], GDataMap)
-			chGroupName <- groupName
-			chData <- GDataMap
+			}(groupName, groupData, ch2)
 
-		}(groupName, groupDatas, chGroupName, chData)
-
+		}
 	}
+
+	//wg.Wait()
+	// GDataMap := make(map[string]string)
+
+	//log.Println("Go Routine End")
+	for i := 0; i < numRecord; i++ {
+		gDataMap := <-ch2
+
+		// fmt.Println(gDataMap)
+
+		groupName := gDataMap.GroupName
+		groupDataMap := gDataMap.DataMap
+
+		//fmt.Println(tmpGDataMap)
+
+		for _, selectword := range selected_res.Data.SelectWords {
+
+			if len(selected_res.Data.Values[groupName][0]) == 0 {
+				selected_res.Data.Values[groupName][0] = make(map[string]string)
+			}
+
+			if _, ok := selected_res.Data.Values[groupName][0][strings.ToUpper(selectword.AsColumn)]; !ok {
+
+				selected_res.Data.Values[groupName][0][strings.ToUpper(selectword.AsColumn)] = groupDataMap[strings.ToUpper(selectword.AsColumn)]
+
+			} else {
+				if selectword.Operator == "" && selectword.Expression == "" {
+					continue
+				}
+
+				f1, err := strconv.ParseFloat(selected_res.Data.Values[groupName][0][strings.ToUpper(selectword.AsColumn)], 64)
+				if err != nil {
+					log.Println("error:", err)
+				}
+				f2, err := strconv.ParseFloat(groupDataMap[strings.ToUpper(selectword.AsColumn)], 64)
+				if err != nil {
+					log.Println("error:", err)
+				}
+
+				total_res_str := ""
+				if selectword.Operator == "sum" {
+					f := f1 + f2
+					total_res_str = strconv.FormatFloat(f, 'f', 5, 64)
+				} else if selectword.Operator == "avg" {
+					f := f1 + f2
+					total_res_str = strconv.FormatFloat(f, 'f', 5, 64)
+				} else if selectword.Operator == "count" {
+					f := f1 + f2 // count 인경우 1이기때문에 더하기
+					total_res_str = strconv.FormatFloat(f, 'f', 5, 64)
+				}
+				selected_res.Data.Values[groupName][0][strings.ToUpper(selectword.AsColumn)] = total_res_str
+			}
+
+			// log.Println("GDataMap:", GDataMap)
+
+		}
+		// selected_res.Data.Values[groupName][0] = GDataMap
+	}
+
+	//fmt.Println("ee", dataMap)
+	for groupName := range selected_res.Data.Values {
+		for _, selectword := range selected_res.Data.SelectWords {
+			if selectword.Operator == "avg" {
+				tmp := selected_res.Data.Values[groupName][0][strings.ToUpper(selectword.AsColumn)]
+				f1, err := strconv.ParseFloat(tmp, 64)
+				if err != nil {
+					log.Println("error:", err)
+				}
+				f := f1 / float64(selected_res.Data.NumOfGroupMap[groupName])
+				total_res_str := strconv.FormatFloat(f, 'f', 5, 64)
+
+				selected_res.Data.Values[groupName][0][strings.ToUpper(selectword.AsColumn)] = total_res_str
+			}
+		}
+	}
+
+	// 	}
+
+	// }
+
+	//fmt.Println("ee2")
+
+	//selected_res.Data.Values[groupName] = append(selected_res.Data.Values[groupName], GDataMap)
+
+	// chGroupName <- groupName
+	// chData <- GDataMap
+
+	//	}
+
 	wg.Wait() // 모든 고루틴이 종료될 때까지 대기
+	fmt.Println("Ended Goroutine")
 
-	startTime := time.Now()
-	for i := 0; i < len(res.Data.Values); i++ {
-		groupName := <-chGroupName
-		GDataMap := <-chData
+	// for i := 0; i < len(res.Data.Values); i++ {
+	// 	groupName := <-chGroupName
+	// 	GDataMap := <-chData
 
-		selected_res.Data.Values[groupName] = append(selected_res.Data.Values[groupName], GDataMap)
-	}
-	endTime := time.Since(startTime).Seconds()
-	fmt.Printf("select detail1: %0.1f sec\n", endTime)
+	// 	selected_res.Data.Values[groupName] = append(selected_res.Data.Values[groupName], GDataMap)
+	// }
 
 	//fmt.Println(selected_res.Data.Values)
 
@@ -815,7 +990,7 @@ func SplitAny(s string, seps string) []string {
 func resJsonParser(jsonDataString string) Response {
 	var res Response
 
-	jsonDataString = strings.Replace(jsonDataString, "No Servers Available", "", -1)
+	// jsonDataString = strings.Replace(jsonDataString, "No Servers Available", "", -1)
 
 	if err := json.Unmarshal([]byte(jsonDataString), &res); err != nil {
 		log.Fatal(err)
@@ -889,15 +1064,44 @@ func main() {
 	SchedulerIP := "10.0.5.101"
 	SchedulerPort := "8100"
 
-	// SchedulerIP := "www.naver.com"
-	// SchedulerPort := "80"
+	// // SchedulerIP = "www.naver.com"
+	// // SchedulerPort = "80"
 
-	// query := "SELECT emp_no, first_name FROM employees WHERE hire_date>=\"1999-12-23\""
+	// query := "SELECT emp_no, first_name FROM employees WHERE hire_date>='1999-12-23'"
 	// query := "SELECT sum(C_CUSTKEY) FROM customer WHERE C_NAME='a' and C_CUSTKEY='1' and C_CUSTKEY='2' and C_CUSTKEY='3'"
-	//query := "SELECT C_NAME, C_ADDRESS, C_PHONE, C_CUSTKEY FROM customer WHERE C_CUSTKEY=525"
-	// query := "SELECT C_CUSTKEY FROM customer"
-	query := "select l_returnflag, l_linestatus, sum(l_quantity) as sum_qty, sum(l_extendedprice) as sum_base_price, sum(l_extendedprice * (1 - l_discount)) as sum_disc_price, sum(l_extendedprice * (1 - l_discount) * (1 + l_tax)) as sum_charge, avg(l_quantity) as avg_qty, avg(l_extendedprice) as avg_price, avg(l_discount) as avg_disc, count(*) as count_order from LINEITEM where l_shipdate <= date '1998-12-01' - interval '108' day group by l_returnflag, l_linestatus order by l_returnflag, l_linestatus;"
+	// query := "SELECT C_NAME, C_ADDRESS, C_PHONE, C_CUSTKEY FROM customer WHERE C_CUSTKEY=525"
+	// query := "SELECT C_CUSTKEY FROM customer WHERE C_CUSTKEY < 500"
+	// // query := "select l_returnflag, l_linestatus, sum(l_quantity) as sum_qty, sum(l_extendedprice) as sum_base_price, sum(l_extendedprice * (1 - l_discount)) as sum_disc_price, sum(l_extendedprice * (1 - l_discount) * (1 + l_tax)) as sum_charge, avg(l_quantity) as avg_qty, avg(l_extendedprice) as avg_price, avg(l_discount) as avg_disc, count(*) as count_order from lineitem where l_shipdate <= date '1998-12-01' - interval '108' day group by l_returnflag, l_linestatus order by l_returnflag, l_linestatus;"
 	//query := "select l_returnflag, l_linestatus, L_ORDERKEY, L_PARTKEY, L_SUPPKEY, L_LINENUMBER, L_QUANTITY, L_EXTENDEDPRICE, L_DISCOUNT, L_TAX, L_SHIPDATE, L_COMMITDATE from lineitem where l_shipdate <= date '1998-12-01' - interval '108' day order by l_returnflag, l_linestatus;"
-	//query := "select l_returnflag, l_linestatus,L_TAX, L_SHIPDATE, L_COMMITDATE from lineitem where l_shipdate <= date '1818-12-01' - interval '108' day;"
+	query := "select l_returnflag, l_linestatus,L_TAX, L_SHIPDATE, L_COMMITDATE from lineitem where l_shipdate <= date '1998-12-01' - interval '108' day;"
+	query = "select p_parkey, s_acctbal, n_name from part, supplier, partsupp, nation, region where p_partkey = ps_partkey;"
+
+	tpchQuery := make(map[int]string)
+
+	tpchQuery[1] = "select l_returnflag, l_linestatus, sum(l_quantity) as sum_qty, sum(l_extendedprice) as sum_base_price, sum(l_extendedprice * (1 - l_discount)) as sum_disc_price, sum(l_extendedprice * (1 - l_discount) * (1 + l_tax)) as sum_charge, avg(l_quantity) as avg_qty, avg(l_extendedprice) as avg_price, avg(l_discount) as avg_disc, count(*) as count_order from lineitem where l_shipdate <= date '1998-12-01' - interval '108' day group by l_returnflag, l_linestatus order by l_returnflag, l_linestatus;"
+	tpchQuery[2] = "select s_acctbal, s_name, n_name, p_partkey, p_mfgr, s_address, s_phone, s_comment from part, supplier, partsupp, nation, region where p_partkey = ps_partkey and s_suppkey = ps_suppkey and p_size = 15 and p_type like '%BRASS' and s_nationkey = n_nationkey and n_regionkey = r_regionkey and r_name = 'EUROPE' and ps_supplycost = (select min(ps_supplycost) from partsupp, supplier, nation, region where p_partkey = ps_partkey and s_suppkey = ps_suppkey and s_nationkey = n_nationkey and n_regionkey = r_regionkey and r_name = 'EUROPE') order by s_acctbal desc, n_name, s_name, p_partkey LIMIT 100;"
+	tpchQuery[3] = "select l_orderkey, sum(l_extendedprice * (1 - l_discount)) as revenue, o_orderdate, o_shippriority from customer, orders, lineitem where c_mktsegment = 'BUILDING' and c_custkey = o_custkey and l_orderkey = o_orderkey and o_orderdate < date '1995-03-15' and l_shipdate > date '1995-03-15' group by l_orderkey, o_orderdate, o_shippriority order by revenue desc, o_orderdate LIMIT 10;"
+	tpchQuery[4] = "select o_orderpriority, count(*) as order_count from orders where o_orderdate >= date '1993-07-01' and o_orderdate < date '1993-07-01' + interval '3' month and exists (select * from lineitem where l_orderkey = o_orderkey and l_commitdate < l_receiptdate) group by o_orderpriority order by o_orderpriority;"
+	tpchQuery[5] = "select n_name, sum(l_extendedprice * (1 - l_discount)) as revenue from customer, orders, lineitem, supplier, nation, region where c_custkey = o_custkey and l_orderkey = o_orderkey and l_suppkey = s_suppkey and c_nationkey = s_nationkey and s_nationkey = n_nationkey and n_regionkey = r_regionkey and r_name = 'ASIA' and o_orderdate >= date '1994-01-01' and o_orderdate < date '1994-01-01' + interval '1' year group by n_name order by revenue desc;"
+	tpchQuery[6] = "select sum(l_extendedprice * l_discount) as revenue from lineitem where l_shipdate >= date '1994-01-01' and l_shipdate < date '1994-01-01' + interval '1' year and l_discount between .06 - 0.01 and .06 + 0.01 and l_quantity < 24;"
+	tpchQuery[7] = "select supp_nation, cust_nation, l_year, sum(volume) as revenue from (select n1.n_name as supp_nation, n2.n_name as cust_nation, extract(year from l_shipdate) as l_year, l_extendedprice * (1 - l_discount) as volume from supplier, lineitem, orders, customer, nation n1, nation n2 where s_suppkey = l_suppkey and o_orderkey = l_orderkey and c_custkey = o_custkey and s_nationkey = n1.n_nationkey and c_nationkey = n2.n_nationkey and ((n1.n_name = 'FRANCE' and n2.n_name = 'GERMANY') or (n1.n_name = 'GERMANY' and n2.n_name = 'FRANCE')) and l_shipdate between date '1995-01-01' and date '1996-12-31') as shipping group by supp_nation, cust_nation, l_year order by supp_nation, cust_nation, l_year;"
+	tpchQuery[8] = "select o_year, sum(case when nation = 'BRAZIL' then volume else 0 end) / sum(volume) as mkt_share from (select extract(year from o_orderdate) as o_year, l_extendedprice * (1 - l_discount) as volume, n2.n_name as nation from part, supplier, lineitem, orders, customer, nation n1, nation n2, region where p_partkey = l_partkey and s_suppkey = l_suppkey and l_orderkey = o_orderkey and o_custkey = c_custkey and c_nationkey = n1.n_nationkey and n1.n_regionkey = r_regionkey and r_name = 'AMERICA' and s_nationkey = n2.n_nationkey and o_orderdate between date '1995-01-01' and date '1996-12-31' and p_type = 'ECONOMY ANODIZED STEEL') as all_nations group by o_year order by o_year;"
+	tpchQuery[9] = "select nation, o_year, sum(amount) as sum_profit from (select n_name as nation, extract(year from o_orderdate) as o_year, l_extendedprice * (1 - l_discount) - ps_supplycost * l_quantity as amount from part, supplier, lineitem, partsupp, orders, nation where s_suppkey = l_suppkey and ps_suppkey = l_suppkey and ps_partkey = l_partkey and p_partkey = l_partkey and o_orderkey = l_orderkey and s_nationkey = n_nationkey and p_name like '%green%') as profit group by nation, o_year order by nation, o_year desc;"
+	tpchQuery[10] = "select c_custkey, c_name, sum(l_extendedprice * (1 - l_discount)) as revenue, c_acctbal, n_name, c_address, c_phone, c_comment from customer, orders, lineitem, nation where c_custkey = o_custkey and l_orderkey = o_orderkey and o_orderdate >= date '1993-10-01' and o_orderdate < date '1993-10-01' + interval '3' month and l_returnflag = 'R' and c_nationkey = n_nationkey group by c_custkey, c_name, c_acctbal, c_phone, n_name, c_address, c_comment order by revenue desc LIMIT 20;"
+	tpchQuery[11] = "select ps_partkey, sum(ps_supplycost * ps_availqty) as 'VALUE' from partsupp, supplier, nation where ps_suppkey = s_suppkey and s_nationkey = n_nationkey and n_name = 'GERMANY' group by ps_partkey having sum(ps_supplycost * ps_availqty) > (select sum(ps_supplycost * ps_availqty) * 0.0001000000 from partsupp, supplier, nation where ps_suppkey = s_suppkey and s_nationkey = n_nationkey and n_name = 'GERMANY') order by 'VALUE' desc;"
+	tpchQuery[12] = "select l_shipmode, sum(case when o_orderpriority = '1-URGENT' or o_orderpriority = '2-HIGH' then 1 else 0 end) as high_line_count, sum(case when o_orderpriority <> '1-URGENT' and o_orderpriority <> '2-HIGH' then 1 else 0 end) as low_line_count from orders, lineitem where o_orderkey = l_orderkey and l_shipmode in ('MAIL', 'SHIP') and l_commitdate < l_receiptdate and l_shipdate < l_commitdate and l_receiptdate >= date '1994-01-01' and l_receiptdate < date '1994-01-01' + interval '1' year group by l_shipmode order by l_shipmode;"
+	tpchQuery[13] = "select c_count, count(*) as custdist from (select c_custkey, count(o_orderkey) from customer left outer join orders on c_custkey = o_custkey and o_comment not like '%special%requests%' group by c_custkey) as c_orders (c_custkey, c_count) group by c_count order by custdist desc, c_count desc;"
+	tpchQuery[14] = "select 100.00 * sum(case when p_type like 'PROMO%' then l_extendedprice * (1 - l_discount) else 0 end) / sum(l_extendedprice * (1 - l_discount)) as promo_revenue from lineitem, part where l_partkey = p_partkey and l_shipdate >= date '1995-09-01' and l_shipdate < date '1995-09-01' + interval '1' month;"
+	tpchQuery[15] = "with revenue0 (supplier_no, total_revenue) as (select l_suppkey, sum(l_extendedprice * (1 - l_discount)) from lineitem where l_shipdate >= date '1996-01-01' and l_shipdate < date '1996-01-01' + interval '3' month group by l_suppkey) select s_suppkey, s_name, s_address, s_phone, total_revenue from supplier, revenue0 where s_suppkey = supplier_no and total_revenue = ( select max(total_revenue) from revenue0 ) order by s_suppkey;"
+	tpchQuery[16] = "select p_brand, p_type, p_size, count(distinct ps_suppkey) as supplier_cnt from partsupp, part where p_partkey = ps_partkey and p_brand <> 'Brand#45' and p_type not like 'MEDIUM POLISHED%' and p_size in (49, 14, 23, 45, 19, 3, 36, 9) and ps_suppkey not in (select s_suppkey from supplier where s_comment like '%Customer%Complaints%' ) group by p_brand, p_type, p_size order by supplier_cnt desc, p_brand, p_type, p_size;"
+	tpchQuery[17] = "select sum(l_extendedprice) / 7.0 as avg_yearly from lineitem, part where p_partkey = l_partkey and p_brand = 'Brand#23' and p_container = 'MED BOX' and l_quantity < (select 0.2 * avg(l_quantity) from lineitem where l_partkey = p_partkey );"
+	tpchQuery[18] = "select c_name, c_custkey, o_orderkey, o_orderdate, o_totalprice, sum(l_quantity) from customer, orders, lineitem where o_orderkey in ( select l_orderkey from lineitem group by l_orderkey having sum(l_quantity) > 300 ) and c_custkey = o_custkey and o_orderkey = l_orderkey group by c_name, c_custkey, o_orderkey, o_orderdate, o_totalprice order by o_totalprice desc, o_orderdate LIMIT 100;"
+	tpchQuery[19] = "select sum(l_extendedprice* (1 - l_discount)) as revenue from lineitem, part where ( p_partkey = l_partkey and p_brand = 'Brand#12' and p_container in ('SM CASE', 'SM BOX', 'SM PACK', 'SM PKG') and l_quantity >= 1 and l_quantity <= 1 + 10 and p_size between 1 and 5 and l_shipmode in ('AIR', 'AIR REG') and l_shipinstruct = 'DELIVER IN PERSON' ) or ( p_partkey = l_partkey and p_brand = 'Brand#23' and p_container in ('MED BAG', 'MED BOX', 'MED PKG', 'MED PACK') and l_quantity >= 10 and l_quantity <= 10 + 10 and p_size between 1 and 10 and l_shipmode in ('AIR', 'AIR REG') and l_shipinstruct = 'DELIVER IN PERSON' ) or ( p_partkey = l_partkey and p_brand = 'Brand#34' and p_container in ('LG CASE', 'LG BOX', 'LG PACK', 'LG PKG') and l_quantity >= 20 and l_quantity <= 20 + 10 and p_size between 1 and 15 and l_shipmode in ('AIR', 'AIR REG') and l_shipinstruct = 'DELIVER IN PERSON' );"
+	tpchQuery[20] = "select s_name, s_address from supplier, nation where s_suppkey in ( select ps_suppkey from partsupp where ps_partkey in ( select p_partkey from part where p_name like 'forest%' ) and ps_availqty > ( select 0.5 * sum(l_quantity) from lineitem where l_partkey = ps_partkey and l_suppkey = ps_suppkey and l_shipdate >= date '1994-01-01' and l_shipdate < date '1994-01-01' + interval '1' year ) ) and s_nationkey = n_nationkey and n_name = 'CANADA' order by s_name;"
+	tpchQuery[21] = "select s_name, count(*) as numwait from supplier, lineitem l1, orders, nation where s_suppkey = l1.l_suppkey and o_orderkey = l1.l_orderkey and o_orderstatus = 'F' and l1.l_receiptdate > l1.l_commitdate and exists ( select * from lineitem l2 where l2.l_orderkey = l1.l_orderkey and l2.l_suppkey <> l1.l_suppkey ) and not exists ( select * from lineitem l3 where l3.l_orderkey = l1.l_orderkey and l3.l_suppkey <> l1.l_suppkey and l3.l_receiptdate > l3.l_commitdate ) and s_nationkey = n_nationkey and n_name = 'SAUDI ARABIA' group by s_name order by numwait desc, s_name LIMIT 100;"
+	tpchQuery[22] = "select cntrycode, count(*) as numcust, sum(c_acctbal) as totacctbal from ( select substring(c_phone from 1 for 2) as cntrycode, c_acctbal from customer where substring(c_phone from 1 for 2) in ('13', '31', '23', '29', '30', '18', '17') and c_acctbal > ( select avg(c_acctbal) from customer where c_acctbal > 0.00 and substring(c_phone from 1 for 2) in ('13', '31', '23', '29', '30', '18', '17') ) and not exists ( select * from orders where o_custkey = c_custkey ) ) as custsale group by cntrycode order by cntrycode;"
+
+	//query := tpchQuery[1]
 	RequestSnippet(query, SchedulerIP, SchedulerPort)
+
 }

@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"encoding/json"
 	types "filter/type"
 	"fmt"
 	"io/ioutil"
@@ -13,7 +12,11 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	jsoniter "github.com/json-iterator/go"
 )
+
+var json = jsoniter.ConfigCompatibleWithStandardLibrary
 
 type ScanData struct {
 	Snippet   types.Snippet                `json:"snippet"`
@@ -42,10 +45,15 @@ func Filtering(w http.ResponseWriter, r *http.Request) {
 	log.Println("body read")
 
 	st := time.Now()
-	recieveData := &ScanData{}
-	err = json.Unmarshal(body, recieveData)
+	// recieveData := &ScanData{}
+	// err = json.Unmarshal(body, recieveData)
+	// if err != nil {
+	// 	//klog.Errorln(err)
+	// 	log.Println(err)
+	// }
+	recieveData := &types.ScanData{}
+	err = jsoniter.Unmarshal(body, recieveData)
 	if err != nil {
-		//klog.Errorln(err)
 		log.Println(err)
 	}
 	log.Println("marshalling end")
@@ -55,6 +63,9 @@ func Filtering(w http.ResponseWriter, r *http.Request) {
 	st = time.Now()
 	data := recieveData.Snippet
 	tableData := recieveData.Tabledata
+	for k, v := range tableData {
+		log.Println("table", k, "LENGTH", len(v.Values))
+	}
 
 	var tempData map[string]types.TableValues
 	// tempData = map[string][]string{}
@@ -69,8 +80,8 @@ func Filtering(w http.ResponseWriter, r *http.Request) {
 		tempData = checkWhere(data.WhereClauses[0], data.TableSchema, tableData, data.TableNames)
 
 		// log.Println(tempData)
-		if data.WhereClauses[0].Operator != "NULL" {
-			prevOerator := data.WhereClauses[0].Operator
+		if data.WhereClauses[0].LogicalOperator != "NULL" {
+			prevOerator := data.WhereClauses[0].LogicalOperator
 			wheres := data.WhereClauses[1:]
 			for i, where := range wheres {
 				switch prevOerator {
@@ -88,99 +99,123 @@ func Filtering(w http.ResponseWriter, r *http.Request) {
 					// }
 					// tempData = union
 				}
-				prevOerator = data.WhereClauses[i].Operator
+				prevOerator = data.WhereClauses[i].LogicalOperator
 			}
 		}
-		rowCount := 0
-		for tname, values := range tempData {
-			for cname, _ := range values.Values {
-				if cname != "" {
-					rowCount = len(values.Values[cname])
-					break
-				}
-			}
-			log.Println(time.Now().Format(time.StampMilli), "Table Name: ", tname, "Complete Filter", rowCount)
+		// rowCount := 0
+		// for tname, values := range tempData {
+		// 	for cname, _ := range values.Values {
+		// 		if cname != "" {
+		// 			rowCount = len(values.Values[cname])
+		// 			break
+		// 		}
+		// 	}
+		// 	log.Println(time.Now().Format(time.StampMilli), "Table Name: ", tname, "Complete Filter", rowCount)
 
+		// }
+
+		// 테이블 이름 및 레코드 수 확인
+		for tname, values := range tempData {
+			log.Println("Table Name: ", tname, "Complete Filter", len(values.Values))
 		}
 	}
 	et = time.Since(st).Seconds()
 	log.Println("Filtering", et, "SEC")
 
-	fmt.Println(time.Now().Format(time.StampMilli), "Send to Output Layer")
+	log.Println(time.Now().Format(time.StampMilli), "Send to Output Layer")
 	var fields []string
-	// var values map[string][]map[string]string
-
-	// tempData
-	log.Println(len(tempData["lineitem"].Values["L_SHIPDATE"]))
-	// var value []map[string]string
-	// feild
-	for _, values := range tempData {
-		for col, _ := range values.Values {
-			if col == "lineitem" {
-				continue
-			}
+	for tname, _ := range tempData {
+		for _, col := range data.TableSchema[tname].ColumnNames {
 			fields = append(fields, col)
 		}
 	}
 	log.Println(fields)
+	// var values map[string][]map[string]string
 
-	// log.Println(data.TableNames[0])
-	// values
-	st = time.Now()
-	values := map[string][]map[string]string{}
-	var arr []map[string]string
-	val := map[string]string{}
-	key := ""
-	idx := 0
-	firstTbl := data.TableNames[0]
-	colName := data.TableSchema[firstTbl].ColumnNames[0]
-	log.Println(firstTbl, colName)
-	log.Println(len(tempData[firstTbl].Values[colName]))
-	ll := tempData[firstTbl].Values[strings.ToUpper(data.TableSchema[firstTbl].ColumnNames[0])]
-	log.Println(len(ll))
-	for i := 0; i < len(ll); i++ {
-		for _, tt := range tempData {
-			// 한 테이블 데이터
-			tblData := tt.Values
-			// for i := 0; i < len(tblData[fields[0]]); i++ {
-			for col, d := range tblData {
+	// tempData
+	// log.Println(len(tempData["lineitem"].Values["L_SHIPDATE"]))
+	// var value []map[string]string
+	// feild
+	/*
+		for _, values := range tempData {
+			for col, _ := range values.Values {
 				if col == "lineitem" {
 					continue
 				}
-				val[col] = d[idx]
-				// log.Println(col)
+				fields = append(fields, col)
 			}
 		}
-		idx++
-		if idx < 3 {
-			log.Println(idx, val)
-			log.Println(arr)
-		}
-		arr = append(arr, val)
-		val = map[string]string{}
+	*/
+
+	// log.Println(data.TableNames[0])
+	// values
+	// Data Parsing
+	st = time.Now()
+	key := ""
+	dataValue := map[string][]map[string]string{}
+	values := []map[string]string{}
+	for _, v := range tempData {
+		values = append(values, v.Values...)
 	}
-	values[key] = arr
-	log.Println()
-	// log.Println(values[key])
-	//
-	// log.Println(values[key][0])
-	log.Println(len(values[key]))
+	dataValue[key] = values
+
+	/*
+		values := map[string][]map[string]string{}
+		var arr []map[string]string
+		val := map[string]string{}
+		key := ""
+		idx := 0
+		firstTbl := data.TableNames[0]
+		colName := data.TableSchema[firstTbl].ColumnNames[0]
+		log.Println(firstTbl, colName)
+		// log.Println(len(tempData[firstTbl].Values[colName]))
+			ll := tempData[firstTbl].Values[strings.ToUpper(data.TableSchema[firstTbl].ColumnNames[0])]
+			log.Println(len(ll))
+			for i := 0; i < len(ll); i++ {
+				for _, tt := range tempData {
+					// 한 테이블 데이터
+					tblData := tt.Values
+					// for i := 0; i < len(tblData[fields[0]]); i++ {
+					for col, d := range tblData {
+						if col == "lineitem" {
+							continue
+						}
+						val[col] = d[idx]
+						// log.Println(col)
+					}
+				}
+				idx++
+				if idx < 3 {
+					log.Println(idx, val)
+					log.Println(arr)
+				}
+				arr = append(arr, val)
+				val = map[string]string{}
+			}
+			values[key] = arr
+			log.Println()
+			// log.Println(values[key])
+			//
+			// log.Println(values[key][0])
+			log.Println(len(values[key]))
+	*/
 	log.Println("Data Parsing", time.Since(st).Seconds(), "SEC")
 	resp := &types.QueryResponse{
 		Table: data.TableNames,
 		// BufferAddress: data.BufferAddress,
-		Field:  fields,
-		Values: values,
+		Field: fields,
+		// Values: values,
+		Values: dataValue,
 		// TableData: tempData,
 	}
 
-	outputBody := &FilterData{}
+	outputBody := &types.FilterData{}
 	outputBody.Result = *resp
 	outputBody.TempData = tempData
 
 	// st = time.Now()
 	log.Println("marshalling start")
-	log.Println("resp value:", len(resp.Values[key]))
+	log.Println("resp value:", len(resp.Values))
 	result := &outputBody.Result
 	// td := outputBody.TempData
 	newData := types.Data{
@@ -188,7 +223,7 @@ func Filtering(w http.ResponseWriter, r *http.Request) {
 		Field:  result.Field,
 		Values: resp.Values,
 	}
-	res := ResponseA{
+	res := types.ResponseA{
 		Code:    200,
 		Message: "success",
 		Data:    newData,
@@ -196,7 +231,7 @@ func Filtering(w http.ResponseWriter, r *http.Request) {
 	log.Println(len(res.Data.Values[key]))
 
 	st = time.Now()
-	outputJson, err := json.Marshal(res)
+	outputJson, err := jsoniter.Marshal(res)
 	if err != nil {
 		log.Println(err)
 	}
@@ -231,10 +266,10 @@ func checkWhere(where types.Where, schema map[string]types.TableSchema, tableDat
 	log.Println("checkwhere func..")
 	// TODO: 수정 필요
 	tblSchema := schema[tableNames[0]]
-	tblData := tableData[tableNames[0]]
-	for i, _ := range tblData.Values {
-		log.Println(i)
-	}
+	tblData := tableData[tableNames[0]].Values
+	// for i, _ := range tblData {
+	// 	log.Println(i)
+	// }
 	// log.Println(tblSchema)
 	// log.Println(tblData)
 
@@ -243,26 +278,27 @@ func checkWhere(where types.Where, schema map[string]types.TableSchema, tableDat
 	log.Println(whereCmd)
 	// 컬럼 인덱스 찾기
 	columnIndex := foundIndex(tblSchema.ColumnNames, where.LeftValue)
+	columnIndexName := tblSchema.ColumnNames[columnIndex]
 	log.Println("found index complete")
-	log.Println("columnIndex", columnIndex)
+	log.Println("columnIndex", columnIndex, "columnName", columnIndexName)
 	if tblSchema.ColumnTypes[columnIndex] == "int" {
-		log.Println("int")
+		log.Println("INT FILTERING")
 		// 현재 컬럼의 데이터들
-		currentColumn := tblData.Values[where.LeftValue]
+		// currentColumn := tblData[where.LeftValue]
+		// Right Value to int
 		rv, err := strconv.Atoi(where.RightValue)
 		if err != nil {
 			//klog.Errorln(err)
 			log.Println(err)
 		}
+		log.Println("RV: ", rv)
 
-		for i := 0; i < len(currentColumn); i++ {
-			log.Println("index", i)
-			lv, err := strconv.Atoi(currentColumn[i])
+		for i, element := range tblData {
+			lv, err := strconv.Atoi(element[columnIndexName])
 			if err != nil {
-				//klog.Errorln(err)
 				log.Println(err)
 			}
-			switch where.Exp {
+			switch where.CompOperator {
 			case "=":
 				if lv == rv {
 					resultIndex = append(resultIndex, i)
@@ -295,13 +331,58 @@ func checkWhere(where types.Where, schema map[string]types.TableSchema, tableDat
 				}
 			}
 		}
+
+		/*
+			for i := 0; i < len(currentColumn); i++ {
+				log.Println("index", i)
+				lv, err := strconv.Atoi(currentColumn[i])
+				if err != nil {
+					//klog.Errorln(err)
+					log.Println(err)
+				}
+				switch where.Exp {
+				case "=":
+					if lv == rv {
+						resultIndex = append(resultIndex, i)
+					} else {
+						continue
+					}
+				case ">=":
+					if lv >= rv {
+						resultIndex = append(resultIndex, i)
+					} else {
+						continue
+					}
+				case "<=":
+					if lv <= rv {
+						resultIndex = append(resultIndex, i)
+					} else {
+						continue
+					}
+				case ">":
+					if lv > rv {
+						resultIndex = append(resultIndex, i)
+					} else {
+						continue
+					}
+				case "<":
+					if lv < rv {
+						resultIndex = append(resultIndex, i)
+					} else {
+						continue
+					}
+				}
+			}
+		*/
 	} else if tblSchema.ColumnTypes[columnIndex] == "date" {
-		// TODO: lvcheck 필요
-		currentColumn := tblData.Values[strings.ToUpper(where.LeftValue)]
+		// TODO: lvcheck 필요, where절 컬럼 대문자로 변경 필요
+		// currentColumn := tblData.Values[strings.ToUpper(where.LeftValue)]
+		whereKey := strings.ToUpper(where.LeftValue)
+		log.Println(whereKey)
 		// log.Println(currentColumn)
 		// whereCmd := rvCheck(where)
 		log.Println(whereCmd)
-		rv := dateWhere(whereCmd)
+		rv := dateWhereCalCulation(whereCmd)
 		log.Println(rv)
 		// where.RightValue = where.RightValue[1 : len(where.RightValue)-1]
 
@@ -310,7 +391,7 @@ func checkWhere(where types.Where, schema map[string]types.TableSchema, tableDat
 		// 	//klog.Errorln(err)
 		// 	log.Println(err)
 		// }
-		log.Println(len(currentColumn))
+		// log.Println(len(currentColumn))
 		// cpuCnt := runtime.NumCPU()
 		// subSize := len(currentColumn) / cpuCnt
 		// start := 0
@@ -321,31 +402,29 @@ func checkWhere(where types.Where, schema map[string]types.TableSchema, tableDat
 		// for j := 0; j < subSize+1; j++ {
 		// defer wait.Done()
 		// var subResultIndex []int
-		log.Println("len", len(currentColumn))
-		for i := 0; i < len(currentColumn); i++ {
-			// go func(i int, c chan int) {
-			// log.Println("i:", i)
-			// defer wait.Done()
-			// wait.Add(1)
-			// TODO: csv 바꾸고 제거해야함
-			changeCol := strings.Replace(currentColumn[i], ".", "-", -1)
-			changeColList := strings.Split(changeCol, "-")
-			for idx, j := range changeColList {
+		// log.Println("len", len(currentColumn))
+		for i, element := range tblData {
+			lv := element[columnIndexName]
+
+			// date string 형식 변경
+			lv = strings.Replace(lv, ".", "-", -1)
+			lvToken := strings.Split(lv, "-")
+			for idx, j := range lvToken {
 				if len(j) == 1 {
-					changeColList[idx] = "0" + j
+					lvToken[idx] = "0" + j
 				}
 			}
-			changeCol = strings.Join(changeColList, "-")
-			// log.Println(changeCol)
-			lv, err := time.Parse("2006-01-02", changeCol)
+			lv = strings.Join(lvToken, "-")
+
+			// lv date 타입으로 변경
+			leftValue, err := time.Parse("2006-01-02", lv)
 			if err != nil {
-				//klog.Errorln(err)
 				log.Println(err)
 			}
-			// log.Println(lv)
-			switch where.Exp {
+
+			switch where.CompOperator {
 			case "=":
-				if lv.Unix() == rv.Unix() {
+				if leftValue.Unix() == rv.Unix() {
 					resultIndex = append(resultIndex, i)
 					// c <- i
 				}
@@ -353,7 +432,7 @@ func checkWhere(where types.Where, schema map[string]types.TableSchema, tableDat
 				// 	continue
 				// }
 			case ">=":
-				if lv.Unix() >= rv.Unix() {
+				if leftValue.Unix() >= rv.Unix() {
 					resultIndex = append(resultIndex, i)
 					// c <- i
 				}
@@ -361,7 +440,7 @@ func checkWhere(where types.Where, schema map[string]types.TableSchema, tableDat
 				// 	continue
 				// }
 			case "<=":
-				if lv.Unix() <= rv.Unix() {
+				if leftValue.Unix() <= rv.Unix() {
 					resultIndex = append(resultIndex, i)
 					// c <- i
 				}
@@ -369,7 +448,7 @@ func checkWhere(where types.Where, schema map[string]types.TableSchema, tableDat
 				// 	continue
 				// }
 			case ">":
-				if lv.Unix() > rv.Unix() {
+				if leftValue.Unix() > rv.Unix() {
 					resultIndex = append(resultIndex, i)
 					// c <- i
 				}
@@ -377,7 +456,7 @@ func checkWhere(where types.Where, schema map[string]types.TableSchema, tableDat
 				// 	continue
 				// }
 			case "<":
-				if lv.Unix() < rv.Unix() {
+				if leftValue.Unix() < rv.Unix() {
 					resultIndex = append(resultIndex, i)
 					// c <- i
 				}
@@ -386,9 +465,80 @@ func checkWhere(where types.Where, schema map[string]types.TableSchema, tableDat
 				// }
 
 			}
-			// c <- subResultIndex
-			// }(i, c)
 		}
+		/*
+			for i := 0; i < len(currentColumn); i++ {
+				// go func(i int, c chan int) {
+				// log.Println("i:", i)
+				// defer wait.Done()
+				// wait.Add(1)
+				// TODO: csv 바꾸고 제거해야함
+				changeCol := strings.Replace(currentColumn[i], ".", "-", -1)
+				changeColList := strings.Split(changeCol, "-")
+				for idx, j := range changeColList {
+					if len(j) == 1 {
+						changeColList[idx] = "0" + j
+					}
+				}
+				changeCol = strings.Join(changeColList, "-")
+				// log.Println(changeCol)
+				// if i < 5 {
+				// 	log.Println(changeCol)
+				// }
+				lv, err := time.Parse("2006-01-02", changeCol)
+				if err != nil {
+					//klog.Errorln(err)
+					log.Println("INDEX: ", i, "CHANGECOL: ", changeCol)
+					log.Println(err)
+				}
+				// log.Println(lv)
+				switch where.Exp {
+				case "=":
+					if lv.Unix() == rv.Unix() {
+						resultIndex = append(resultIndex, i)
+						// c <- i
+					}
+					// else {
+					// 	continue
+					// }
+				case ">=":
+					if lv.Unix() >= rv.Unix() {
+						resultIndex = append(resultIndex, i)
+						// c <- i
+					}
+					// else {
+					// 	continue
+					// }
+				case "<=":
+					if lv.Unix() <= rv.Unix() {
+						resultIndex = append(resultIndex, i)
+						// c <- i
+					}
+					// else {
+					// 	continue
+					// }
+				case ">":
+					if lv.Unix() > rv.Unix() {
+						resultIndex = append(resultIndex, i)
+						// c <- i
+					}
+					// else {
+					// 	continue
+					// }
+				case "<":
+					if lv.Unix() < rv.Unix() {
+						resultIndex = append(resultIndex, i)
+						// c <- i
+					}
+					// else {
+					// 	continue
+					// }
+
+				}
+				// c <- subResultIndex
+				// }(i, c)
+			}
+		*/
 		// start += subSize
 		// if end+subSize > len(currentColumn) {
 		// 	end = len(currentColumn)
@@ -397,7 +547,7 @@ func checkWhere(where types.Where, schema map[string]types.TableSchema, tableDat
 		// }
 		// }
 		// wait.Wait()
-		log.Println("asdfsdf")
+		// log.Println("asdfsdf")
 		// sum := 0
 		// for i := 0; i < len(c); i++ {
 		// 	sub := <-c
@@ -409,9 +559,10 @@ func checkWhere(where types.Where, schema map[string]types.TableSchema, tableDat
 		// log.Println(sum)
 		log.Println(len(resultIndex))
 	} else {
-		currentColumn := tblData.Values[where.LeftValue]
-		for i := 0; i < len(currentColumn); i++ {
-			if currentColumn[i] == where.RightValue {
+		// currentColumn := tblData[where.LeftValue]
+		whereKey := strings.ToUpper(where.LeftValue)
+		for i := 0; i < len(tblData); i++ {
+			if tblData[i][whereKey] == where.RightValue {
 				resultIndex = append(resultIndex, i)
 			} else {
 				continue
@@ -422,6 +573,7 @@ func checkWhere(where types.Where, schema map[string]types.TableSchema, tableDat
 	newTableValues := types.TableValues{
 		Values: changeData,
 	}
+	// TODO 다중 테이블 생각해야됨
 	tableData[tableNames[0]] = newTableValues
 	return tableData
 }
@@ -464,7 +616,7 @@ func rvCheck(where types.Where) []string {
 	return whereCmd
 }
 
-func dateWhere(whereCmd []string) time.Time {
+func dateWhereCalCulation(whereCmd []string) time.Time {
 	var cmdArr []interface{}
 	prevCmd := ""
 	for i := 0; i < len(whereCmd); i++ {
@@ -543,18 +695,16 @@ func makeSliceUnique(s []string) []string {
 	return res
 }
 
-func rebuildMap(currentMap map[string]types.TableValues, index []int, tableNames []string) map[string][]string {
-	resultMap := make(map[string][]string)
-	tblValues := currentMap[tableNames[0]].Values
+func rebuildMap(currentMap map[string]types.TableValues, index []int, tableNames []string) []map[string]string {
+	// TODO table name 변경 필요
+	resultMap := make([]map[string]string, 0)
+	tblData := currentMap[tableNames[0]].Values
 	// cname, cdata
-	for header, data := range tblValues {
-		if header != "" {
-			resultMap[tableNames[0]] = make([]string, 0)
-			for i := 0; i < len(index); i++ {
-				resultMap[header] = append(resultMap[header], data[index[i]])
-			}
-		}
+	log.Println("Filtered Slice LENGTH", len(index))
+	for _, idx := range index {
+		resultMap = append(resultMap, tblData[idx])
 	}
+	log.Println("TBLDATA REBUILD FILTER COMPLETE")
 
 	return resultMap
 }

@@ -1,37 +1,49 @@
 package types
 
 type Snippet struct {
-	// Parsedquery ParsedQuery `json:"parsedQuery"`
-	// TableSchema TableSchema `json:"tableSchema"`
-	// BlockOffset int         `json:"blockOffset"` // 파일위치
-	// BufferAddress string    `json:"bufferAddress"`
 	TableNames    []string               `json:"tableNames"`
 	TableSchema   map[string]TableSchema `json:"tableSchema"`
 	WhereClauses  []Where                `json:"whereClause"`
 	BlockOffset   int                    `json:"blockOffset"`
-	BufferAddress string                 `json:"buggerAddress"`
+	BufferAddress string                 `json:"bufferAddress"`
+	CsdInfos      CsdInfos               `json:"csdInfos"`
 }
+
+type Where struct {
+	LeftValue       string `json:"leftValue"`
+	CompOperator    string `json:"compOperator"`
+	RightValue      string `json:"rightValue"`
+	LogicalOperator string `json:"logicalOperator"`
+}
+
+type TableSchema struct {
+	ColumnNames []string `json:"columnNames"`
+	ColumnTypes []string `json:"columnTypes"`
+	ColumnSizes []int    `json:"columnSizes"`
+}
+
+type Item struct {
+	Node int            `json:"node"`
+	Csd  map[string]int `json:"csd"`
+}
+
+type CsdInfos struct {
+	NodeTotal int    `json:"nodeTotal"`
+	CsdTotal  int    `json:"csdTotal"`
+	Items     []Item `json:"items"`
+}
+
 type ParsedQuery struct {
 	TableName    string   `json:"tableName"`
 	Columns      []Select `json:"columnName"`
 	WhereClauses []Where  `json:"whereClause"`
 }
+
 type Select struct {
 	ColumnType     int    `json:"columnType"` // 1: (columnName), 2: (aggregateName,aggregateValue)
 	ColumnName     string `json:"columnName"`
 	AggregateName  string `json:"aggregateName"`
 	AggregateValue string `json:"aggregateValue"`
-}
-type Where struct {
-	LeftValue  string `json:"leftValue"`
-	Exp        string `json:"exp"`
-	RightValue string `json:"rightValue"`
-	Operator   string `json:"operator"` // "AND": 뒤에 나오는 Where은 And조건, "OR": 뒤에 나오는 Where은 OR 조건, "NULL": 뒤에 나오는 조건 없음
-}
-type TableSchema struct {
-	ColumnNames []string `json:"columnNames"`
-	ColumnTypes []string `json:"columnTypes"` // int, char, varchar, TEXT, DATETIME,  ...
-	ColumnSizes []int    `json:"columnSizes"` // Data Size
 }
 
 type QueryResponse struct {
@@ -42,5 +54,10 @@ type QueryResponse struct {
 }
 
 type TableValues struct {
-	Values map[string][]string `json:"values"`
+	Values []map[string]string `json:"values"`
+}
+
+type ScanData struct {
+	Snippet   Snippet                `json:"snippet"`
+	Tabledata map[string]TableValues `json:"tabledata"`
 }
